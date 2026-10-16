@@ -74,6 +74,22 @@ td{padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:middle}
 td.n{font-family:var(--f-mono);text-align:right}
 .los{display:inline-block;min-width:22px;text-align:center;border-radius:4px;font:600 12px var(--f-mono);padding:1px 4px;color:#11181a}
 .los.A,.los.B{background:var(--ok)}.los.C{background:var(--warn)}.los.D{background:var(--hot)}.los.E,.los.F{background:var(--bad)}
+.hist-bar{display:flex;gap:6px;align-items:center}
+.hist-bar select{flex:1;min-width:0;background:var(--panel-solid);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:5px 8px;font:500 12px var(--f-body)}
+.hist-bar select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hist-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.hist-sum div{padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+.hist-sum b{display:block;font:500 15px var(--f-mono);font-variant-numeric:tabular-nums}
+.hist-sum span{color:var(--muted);font-size:10.5px}
+.hourly{width:100%;height:76px;display:block;margin-top:10px}
+.peaks td,.peaks th{padding:5px 3px;font-size:12px}
+.peaks td small{display:block;color:var(--muted);font:400 10px var(--f-mono)}
+.peaks tr.go{cursor:pointer}
+.peaks tr.go:hover td{background:rgba(255,255,255,.03)}
+.peaks tr.top td{background:rgba(232,197,71,.08)}
+.peaks tr.top td:first-child{box-shadow:inset 2px 0 var(--accent)}
+.peaks tr.empty td{color:var(--muted)}
+.hist-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px}
 .sched{display:flex;flex-direction:column}
 .dir-head{display:flex;align-items:baseline;gap:8px;padding:10px 10px 8px;margin-top:6px;border-radius:7px 7px 0 0;background:rgba(255,255,255,.04);border-bottom:2px solid var(--accent)}
 .dir-head:first-child{margin-top:0}
@@ -213,6 +229,17 @@ details p{margin:6px 0 0;max-width:62ch}
       </div>
       <canvas class="spark" id="spark" width="620" height="112" aria-label="จำนวนผู้โดยสารในสถานีย้อนหลัง 4 ชั่วโมง"></canvas>
       <div class="lbl" style="margin-top:2px">ผู้โดยสารในสถานี · 4 ชม. ล่าสุด</div>
+    </section>
+    <section class="sec">
+      <h2>ช่วงเวลาพีค · ข้อมูลย้อนหลัง</h2>
+      <div class="hist-bar"><select id="histDay" aria-label="เลือกวันที่ต้องการดู"></select><button class="btn" id="histCsv" title="ดาวน์โหลดตารางเป็น CSV">CSV</button></div>
+      <div class="hist-sum" id="histSum"></div>
+      <canvas class="hourly" id="hourly" width="620" height="152" aria-label="จำนวนผู้โดยสารสูงสุดในสถานีรายชั่วโมง"></canvas>
+      <table class="peaks">
+        <thead><tr><th>ช่วงเวลา</th><th style="text-align:right">พีค (คน)</th><th style="text-align:right">เวลาพีค</th><th style="text-align:right">LOS</th><th style="text-align:right">ขึ้น · ลง</th><th style="text-align:right">ตก</th></tr></thead>
+        <tbody id="peaks"></tbody>
+      </table>
+      <div class="hist-foot"><span class="lbl" id="histNote"></span><button class="btn" id="histClear">ล้างประวัติ</button></div>
     </section>
     <section class="sec">
       <h2>พื้นที่และระดับบริการ (Fruin LOS)</h2>
@@ -1215,7 +1242,7 @@ function flyTo(k, instant){
   if(k === 'building') setXray(true);
 }
 document.querySelectorAll('[data-cam]').forEach(b => b.addEventListener('click', () => flyTo(b.dataset.cam)));
-$('#reset').addEventListener('click', () => startDay(DAY0));
+$('#reset').addEventListener('click', () => { archiveDay(false); startDay(DAY0); });
 document.querySelectorAll('#jump button').forEach(b => b.addEventListener('click', () => timeJump(simT + +b.dataset.j)));
 let scrubbing = false;
 $('#timeSl').addEventListener('input', e => { scrubbing = true; $('#timeOut').textContent = fmt(+e.target.value); });
@@ -1247,7 +1274,55 @@ function sparkDraw(){
   const lx = X(spark.length-1), ly = Y(spark[spark.length-1]); g.fillStyle = '#e8c547'; g.beginPath(); g.arc(lx, ly, 5, 0, 7); g.fill();
   g.fillStyle = '#8fa29e'; g.font = '500 20px "IBM Plex Mono", monospace'; g.fillText(Math.round(max/1.1) + ' คน', 6, 22);
 }
+const histSel = $('#histDay');
+function histOptions(){
+  const cur = histSel.value;
+  histSel.innerHTML = `<option value="live">วันจำลองที่ ${dayNo} · วันนี้ (กำลังจำลอง)</option>` + histDays.map((h, i) => {
+    const when = new Date(h.savedAt).toLocaleString('th-TH', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'});
+    return `<option value="${i}">วันจำลองที่ ${h.no} · ${h.complete ? 'ครบวัน' : 'ถึง ' + fmt(h.day.through)} · คน ${h.demand}% · บันได ${h.stair} ม.${h.crossing ? ' · เปิดทางข้าม' : ''} · ${when}</option>`; }).join('');
+  histSel.value = [...histSel.options].some(o => o.value === cur) ? cur : 'live';
+}
+function histView(){ return histSel.value === 'live' ? {live:true, ...summarize(dayLog)} : histDays[+histSel.value]; }
+function drawHourly(hourly, nowH){
+  const c = $('#hourly'), g = c.getContext('2d'), W = c.width, H = c.height, padB = 26; g.clearRect(0,0,W,H);
+  const max = Math.max(20, ...hourly), top = hourly.indexOf(Math.max(...hourly)), bw = W/24;
+  g.strokeStyle = 'rgba(150,185,178,.14)'; g.lineWidth = 1; g.beginPath(); g.moveTo(0, H-padB+0.5); g.lineTo(W, H-padB+0.5); g.stroke();
+  hourly.forEach((v, i) => { const h = v/max*(H - padB - 22); if(v <= 0) return;
+    g.fillStyle = i === top ? '#e8c547' : i === nowH ? 'rgba(232,197,71,.45)' : 'rgba(143,162,158,.42)';
+    g.beginPath(); g.roundRect ? g.roundRect(i*bw + 3, H - padB - h, bw - 6, h, [4,4,0,0]) : g.rect(i*bw + 3, H - padB - h, bw - 6, h); g.fill(); });
+  g.fillStyle = '#8fa29e'; g.font = '500 18px "IBM Plex Mono", monospace'; g.textAlign = 'center';
+  for(let i=0; i<24; i+=3) g.fillText(String((i+3) % 24).padStart(2,'0'), i*bw + bw/2, H - 6);
+  if(hourly[top] > 0){ const h = hourly[top]/max*(H - padB - 22); g.fillStyle = '#e8c547'; g.fillText(hourly[top], Math.min(W - 24, Math.max(24, top*bw + bw/2)), H - padB - h - 6); }
+  g.textAlign = 'left';
+}
+function renderHistory(){
+  const v = histView(); if(!v) return;
+  const {periods, hourly, day} = v, topI = periods.reduce((b, p, i) => p.peak > periods[b].peak ? i : b, 0);
+  $('#histSum').innerHTML = `<div><b>${day.peak}</b><span>พีคทั้งวัน${day.at != null ? ' · ' + fmt(day.at) : ''}</span></div><div><b>${day.boarded}</b><span>ขึ้นรถ</span></div><div><b style="color:${day.missed ? 'var(--bad)' : 'inherit'}">${day.missed}</b><span>ตกขบวน</span></div>`;
+  drawHourly(hourly, v.live ? Math.min(23, Math.floor((simT - DAY0)/3600)) : -1);
+  $('#peaks').innerHTML = periods.map((p, i) => {
+    if(!p.has) return `<tr class="empty"><td>${p.name}<small>${fmt(p.from)}–${fmt(p.to)}</small></td><td class="n" colspan="5" style="text-align:right">ยังไม่มีข้อมูล</td></tr>`;
+    const l = losOf(p.dens), cls = [i === topI && p.peak > 0 ? 'top' : '', v.live && p.at != null ? 'go' : ''].join(' ');
+    return `<tr class="${cls}" data-t="${p.at ?? ''}" ${v.live && p.at != null ? 'tabindex="0" role="button" title="ย้อนไปดูช่วงพีคนี้"' : ''}>
+      <td>${p.name}<small>${fmt(p.from)}–${fmt(p.to)}</small></td><td class="n">${p.peak}</td><td class="n">${p.at != null ? fmt(p.at) : '–'}</td>
+      <td class="n"><span class="los ${l}" title="${p.zone >= 0 ? ZONES[p.zone].name + ' ' : ''}${p.dens.toFixed(2)} คน/ม²">${l}</span></td>
+      <td class="n">${p.boarded} · ${p.alighted}</td><td class="n" style="${p.missed ? 'color:var(--bad)' : ''}">${p.missed}</td></tr>`; }).join('');
+  $('#histNote').textContent = v.live ? 'แตะแถวเพื่อย้อนไปดูเวลาพีคของช่วงนั้น' : 'ข้อมูลที่บันทึกไว้ของวันที่จำลองจบแล้ว';
+}
+histSel.addEventListener('change', renderHistory);
+$('#peaks').addEventListener('click', e => { const r = e.target.closest('tr.go'); if(r && r.dataset.t) timeJump(+r.dataset.t); });
+$('#peaks').addEventListener('keydown', e => { const r = e.target.closest('tr.go'); if(r && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); timeJump(+r.dataset.t); } });
+$('#histClear').addEventListener('click', () => { if(!confirm('ล้างข้อมูลย้อนหลังทั้งหมด?')) return; histDays = []; try { localStorage.removeItem(HKEY); } catch(e){} histOptions(); renderHistory(); });
+$('#histCsv').addEventListener('click', () => {
+  const rows = [['วันจำลอง','ช่วงเวลา','เริ่ม','สิ้นสุด','พีค (คน)','เวลาพีค','ความหนาแน่นสูงสุด (คน/ม²)','LOS','พื้นที่','ขึ้นรถ','ลงรถ','ตกขบวน']];
+  const days = [{no:dayNo, ...summarize(dayLog)}, ...histDays];
+  for(const d of days) for(const p of d.periods) if(p.has) rows.push([d.no, p.name, fmt(p.from), fmt(p.to), p.peak, p.at != null ? fmt(p.at) : '', p.dens, losOf(p.dens), p.zone >= 0 ? ZONES[p.zone].name : '', p.boarded, p.alighted, p.missed]);
+  const csv = '\ufeff' + rows.map(r => r.map(x => /[",\n]/.test(String(x)) ? '"' + String(x).replace(/"/g, '""') + '"' : x).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'phitsanulok-peaks.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+let histT = 0;
 function updateUI(){
+  if(histSel.value === 'live' && performance.now() - histT > 1500){ histT = performance.now(); renderHistory(); }
   $('#clock').textContent = fmt(simT);
   if(!scrubbing){ $('#timeSl').value = Math.round(simT); $('#timeOut').textContent = fmt(simT); }
   $('#miniStat').textContent = `${agents.length} คน · ขึ้น ${S.boarded} · ตก ${S.missed}`;
@@ -1296,7 +1371,7 @@ addEventListener('resize', resize);
 function startDay(t0, warmTo){
   agents = []; resetTrains(); Object.assign(S, {boarded:0, alighted:0, missed:0, waitSum:0, waitN:0}); spark = []; lastSample = 0;
   for(const k in STAIRS) STAIRS[k].next = 0;
-  simT = t0; snaps = []; snapshot();
+  simT = t0; snaps = []; dayLog = []; snapshot();
   if(warmTo) advance(warmTo);
   stepTrains(0, true); updateHeat(); updateUI(); sparkDraw();
 }
@@ -1317,15 +1392,60 @@ function restore(s){
   spark = s.spark.slice(); lastSample = s.lastSample;
 }
 function sample(draw){
-  if(simT - lastSample >= 60){ lastSample = simT; spark.push(agents.length); if(spark.length > 240) spark.shift(); if(draw) sparkDraw(); }
+  if(simT - lastSample >= 60){ lastSample = simT; spark.push(agents.length); if(spark.length > 240) spark.shift(); if(draw) sparkDraw(); logMinute(); }
   if(simT - snaps[snaps.length-1].t >= SNAP_EVERY) snapshot();
 }
 function advance(to){ while(simT < to - 1e-6){ step(Math.min(0.5, to - simT), false); sample(false); } }
 function jumpTo(t){
   t = Math.max(DAY0, Math.min(DAY1 - 60, Math.round(t)));
-  if(t < simT){ while(snaps.length > 1 && snaps[snaps.length-1].t > t) snaps.pop(); restore(snaps[snaps.length-1]); }
+  if(t < simT){ while(snaps.length > 1 && snaps[snaps.length-1].t > t) snaps.pop(); restore(snaps[snaps.length-1]); dayLog = dayLog.filter(e => e[0] <= simT); }
   advance(t);
-  stepTrains(0, true); updateHeat(); updateUI(); sparkDraw(); lastClockMin = -1;
+  stepTrains(0, true); updateHeat(); histT = 0; updateUI(); sparkDraw(); lastClockMin = -1;
+}
+// ---------------------------------------------------------------- peak log and history
+// one row per simulated minute: [time, people in station, peak density, zone of that peak, boarded, alighted, missed]
+let dayLog = [], dayNo = 1;
+const PERIODS = [['เช้ามืด','03:00','06:00'],['เช้า','06:00','09:00'],['สาย','09:00','11:00'],['เที่ยง','11:00','13:00'],['บ่าย','13:00','16:00'],
+  ['เย็น','16:00','19:00'],['ค่ำ','19:00','22:00'],['ดึก','22:00','24:00'],['หลังเที่ยงคืน','24:00','27:00']].map(([name, a, b]) => ({name, from:hm(a), to:hm(b)}));
+// peak density without painting the whole heatmap: only cells around people can be dense
+function peakDensity(){
+  counts.fill(0); const cells = [];
+  for(const a of agents){ if(a.y > 4) continue; const cx = Math.floor((a.x - HX0)/CELL), cz = Math.floor((a.z - HZ0)/CELL);
+    if(cx>=0 && cx<HW && cz>=0 && cz<HH){ counts[cz*HW + cx]++; cells.push(cx, cz); } }
+  let best = 0, bx = 0, bz = 0;
+  for(let i=0; i<cells.length; i+=2){ const x = cells[i], z = cells[i+1]; let sum = 0;
+    for(let dz=-1; dz<=1; dz++){ const zz = z+dz; if(zz<0||zz>=HH) continue; for(let dx=-1; dx<=1; dx++){ const xx = x+dx; if(xx>=0 && xx<HW) sum += counts[zz*HW+xx]; } }
+    if(sum > best){ best = sum; bx = x; bz = z; } }
+  const wx = HX0 + (bx + 0.5)*CELL, wz = HZ0 + (bz + 0.5)*CELL;
+  const zone = ZONES.findIndex(zn => zn.rect && wx >= zn.rect[0] && wx <= zn.rect[1] && wz >= zn.rect[2] && wz <= zn.rect[3]);
+  return [best/(9*CELL*CELL), zone];
+}
+function logMinute(){ const [d, z] = peakDensity(); dayLog.push([Math.round(simT), agents.length, +d.toFixed(2), z, S.boarded, S.alighted, S.missed]); }
+function summarize(log){
+  const periods = PERIODS.map(p => ({name:p.name, from:p.from, to:p.to, peak:0, at:null, dens:0, zone:-1, boarded:0, alighted:0, missed:0, has:false}));
+  const hourly = new Array(24).fill(0); let prev = [0,0,0,0,0,0,0], day = {peak:0, at:null, boarded:0, alighted:0, missed:0};
+  for(const e of log){
+    const p = periods.find(q => e[0] > q.from && e[0] <= q.to) || periods[0]; p.has = true;
+    if(e[1] > p.peak){ p.peak = e[1]; p.at = e[0]; }
+    if(e[2] > p.dens){ p.dens = e[2]; p.zone = e[3]; }
+    p.boarded += e[4] - prev[4]; p.alighted += e[5] - prev[5]; p.missed += e[6] - prev[6]; prev = e;
+    const h = Math.min(23, Math.floor((e[0] - 1 - DAY0)/3600)); if(e[1] > hourly[h]) hourly[h] = e[1];
+    if(e[1] > day.peak){ day.peak = e[1]; day.at = e[0]; }
+  }
+  Object.assign(day, {boarded:prev[4], alighted:prev[5], missed:prev[6], through:log.length ? log[log.length-1][0] : DAY0});
+  return {periods, hourly, day};
+}
+const HKEY = 'phs-history-v1';
+let histDays = [];
+try { histDays = JSON.parse(localStorage.getItem(HKEY) || '[]'); if(!Array.isArray(histDays)) histDays = []; } catch(e){ histDays = []; }
+if(histDays.length) dayNo = Math.max(...histDays.map(h => h.no || 0)) + 1;
+function archiveDay(complete){
+  if(dayLog.length < 60) return;
+  const sm = summarize(dayLog);
+  histDays.unshift({no:dayNo++, savedAt:Date.now(), complete, demand:Math.round(demand*100), stair:+(stairCap/0.8).toFixed(1), crossing:crossingOpen, ...sm});
+  histDays = histDays.slice(0, 30);
+  try { localStorage.setItem(HKEY, JSON.stringify(histDays)); } catch(e){}
+  histOptions();
 }
 // a long jump replays hours of crowd movement, so show a note and let it paint first
 function timeJump(t){ $('#busy').hidden = false; setTimeout(() => { jumpTo(t); $('#busy').hidden = true; }, 30); }
@@ -1337,7 +1457,7 @@ function frame(now){
     const sim = dt * speed, n = Math.min(16, Math.max(1, Math.ceil(sim/0.25))), h = sim/n;
     for(let i=0;i<n;i++) step(h, i === n-1);
     sample(true);
-    if(simT > DAY1) startDay(DAY0);
+    if(simT > DAY1){ archiveDay(true); startDay(DAY0); }
   }
   if(fly){ const k = Math.min(1, (now - fly.s)/1100), e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k+2, 2)/2;
     camera.position.lerpVectors(fly.p0, fly.p, e); controls.target.lerpVectors(fly.t0, fly.t, e); if(k >= 1) fly = null; }
@@ -1360,7 +1480,7 @@ function init(){
   label('ลานจอดรถ', -61, 5, -150, 14);
   label('ทางข้ามระดับ (ปิด)', -12, 4, 238, 20).name = 'xlabel';
   resize(); flyTo('overview', true);
-  startDay(DAY0, hm('07:21'));
+  histOptions(); startDay(DAY0, hm('07:21'));
   $('#loading').hidden = true;
   requestAnimationFrame(t => { last = t; frame(t); });
 }
