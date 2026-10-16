@@ -185,14 +185,14 @@ details p{margin:6px 0 0;max-width:62ch}
       </table>
     </section>
     <section class="sec">
-      <h2>ตารางเดินรถ (ตัวอย่าง)</h2>
+      <h2>ตารางเดินรถ รฟท. · สถานีพิษณุโลก</h2>
       <div class="sched" id="sched"></div>
     </section>
     <section class="sec">
       <details>
         <summary>เกี่ยวกับแบบจำลองนี้</summary>
         <p>ผังรางและอาคารประมาณจากภาพถ่ายดาวเทียมที่แนบมา ระยะต่างๆ เป็นค่าโดยประมาณ ไม่ใช่แบบก่อสร้างจริง</p>
-        <p>ตารางเดินรถและจำนวนผู้โดยสารเป็นข้อมูลตัวอย่างสำหรับทดลอง ไม่ใช่ตารางของการรถไฟแห่งประเทศไทย</p>
+        <p>เวลาถึงและเวลาออกของ 22 ขบวนมาจากตารางเดินรถสถานีรถไฟพิษณุโลกของ รฟท. ส่วนการกำหนดชานชาลา (ขึ้นเหนือชานชาลา 1, ล่องใต้ชานชาลา 3, ขบวนท้องถิ่นต้นทาง/ปลายทางชานชาลา 2) และจำนวนผู้โดยสารเป็นค่าสมมติ วันจำลองเริ่ม 03:00 และวนรอบที่ 03:00 ของวันถัดไป</p>
         <p>ผู้โดยสารเดินราว 1.3 ม./วินาที บันไดรับได้ 0.8 คน/วินาที ต่อความกว้าง 1 เมตร ระดับบริการคำนวณจากความหนาแน่นสูงสุดในพื้นที่ 4.5×4.5 ม. ตามเกณฑ์พื้นที่รอคอยของ Fruin</p>
       </details>
     </section>
@@ -840,39 +840,47 @@ const j = (p, r) => ({x:p.x + (Math.random()-0.5)*r, y:p.y, z:p.z + (Math.random
 // ---------------------------------------------------------------- schedule (sample)
 const KIND = {sp:'ด่วนพิเศษ', ex:'ด่วน', rp:'เร็ว', or:'ธรรมดา', lc:'ท้องถิ่น'};
 const hm = s => { const [h,m] = s.split(':').map(Number); return h*3600 + m*60; };
+// SRT Phitsanulok station timetable (from the station's timetable poster). Platform numbers and passenger counts are model assumptions.
+// The simulated day runs 03:00–27:00 so trains after midnight stay in the same day.
+const BKK = 'กรุงเทพอภิวัฒน์';
 const RAW = [
   // no, kind, livery, route, arr, dep, platform, cars, board, alight, from, to
-  ['402','lc','lc','พิษณุโลก → ลพบุรี',null,'06:05',3,4,90,0,'N','S'],
-  ['7','sp','sp','กรุงเทพฯ → เชียงใหม่','06:34','06:41',1,9,80,120,'S','N'],
-  ['109','rp','rp','กรุงเทพฯ → เชียงใหม่','07:12','07:22',2,10,90,140,'S','N'],
-  ['202','or','or','พิษณุโลก → กรุงเทพฯ',null,'07:45',3,8,220,0,'N','S'],
-  ['410','lc','lc','พิษณุโลก → ศิลาอาสน์',null,'08:10',2,3,60,0,'N','N'],
-  ['14','sp','sp','เชียงใหม่ → กรุงเทพฯ','08:50','08:56',1,9,110,70,'N','S'],
-  ['51','ex','rp','กรุงเทพฯ → เชียงใหม่','09:40','09:48',2,10,70,90,'S','N'],
-  ['201','or','or','กรุงเทพฯ → พิษณุโลก','10:35',null,1,8,0,210,'S','N'],
-  ['9','sp','sp','กรุงเทพฯ → เชียงใหม่','11:20','11:26',1,9,60,80,'S','N'],
-  ['112','rp','rp','เชียงใหม่ → กรุงเทพฯ','12:05','12:15',3,10,150,100,'N','S'],
-  ['403','lc','lc','ศิลาอาสน์ → พิษณุโลก','12:40',null,2,3,0,70,'N','N'],
-  ['108','rp','rp','กรุงเทพฯ → เชียงใหม่','13:30','13:40',1,10,80,120,'S','N'],
-  ['52','ex','rp','เชียงใหม่ → กรุงเทพฯ','14:25','14:33',3,10,160,80,'N','S'],
-  ['212','or','or','พิษณุโลก → กรุงเทพฯ',null,'15:10',2,8,200,0,'N','S'],
-  ['10','sp','sp','เชียงใหม่ → กรุงเทพฯ','16:05','16:11',1,9,130,60,'N','S'],
-  ['111','rp','rp','กรุงเทพฯ → เชียงใหม่','16:50','17:00',2,10,70,160,'S','N'],
-  ['406','lc','lc','ลพบุรี → พิษณุโลก','17:35',null,3,4,0,110,'S','N'],
-  ['13','sp','sp','กรุงเทพฯ → เชียงใหม่','18:30','18:36',1,9,50,130,'S','N'],
-  ['102','rp','rp','เชียงใหม่ → กรุงเทพฯ','19:20','19:30',3,10,170,60,'N','S'],
-  ['105','rp','rp','กรุงเทพฯ → เชียงใหม่','20:40','20:50',2,10,50,110,'S','N'],
-  ['8','sp','sp','เชียงใหม่ → กรุงเทพฯ','21:35','21:42',1,9,120,40,'N','S'],
-  ['107','rp','rp','เชียงใหม่ → กรุงเทพฯ','22:30','22:40',3,10,90,40,'N','S'],
+  // northbound (to Chiang Mai)
+  ['403','lc','lc','พิษณุโลก → ศิลาอาสน์',null,'05:55',2,4,60,0,'S','N'],
+  ['407','lc','lc','นครสวรรค์ → เชียงใหม่','07:26','07:27',1,4,40,30,'S','N'],
+  ['401','lc','lc','ลพบุรี 1 → พิษณุโลก','10:35',null,2,4,0,90,'S','N'],
+  ['7','sp','sp',BKK+' → เชียงใหม่','11:48','11:58',1,9,90,110,'S','N'],
+  ['111','rp','rp',BKK+' → เด่นชัย','14:08','14:10',1,10,70,80,'S','N'],
+  ['201','or','or','กรุงเทพฯ (หัวลำโพง) → พิษณุโลก','17:55',null,2,8,0,200,'S','N'],
+  ['109','rp','rp',BKK+' → เชียงใหม่','20:35','20:37',1,10,80,120,'S','N'],
+  ['9','sp','sp',BKK+' → เชียงใหม่','00:15','00:17',1,9,40,50,'S','N'],
+  ['13','sp','sp',BKK+' → เชียงใหม่','01:57','01:59',1,9,30,40,'S','N'],
+  ['107','rp','rp',BKK+' → เด่นชัย','02:44','02:46',1,10,30,30,'S','N'],
+  ['51','ex','rp',BKK+' → เชียงใหม่','04:28','04:30',1,10,40,40,'S','N'],
+  // southbound (to Bangkok)
+  ['14','sp','sp','เชียงใหม่ → '+BKK,'23:59','00:01',3,9,50,30,'N','S'],
+  ['10','sp','sp','เชียงใหม่ → '+BKK,'00:59','01:01',3,9,40,25,'N','S'],
+  ['202','or','or','พิษณุโลก → กรุงเทพฯ (หัวลำโพง)',null,'06:05',3,8,200,0,'N','S'],
+  ['112','rp','rp','เด่นชัย → '+BKK,'10:41','10:43',3,10,130,90,'N','S'],
+  ['8','sp','sp','เชียงใหม่ → '+BKK,'13:16','13:26',3,9,120,90,'N','S'],
+  ['102','rp','rp','เชียงใหม่ → '+BKK,'13:40','13:42',3,10,140,70,'N','S'],
+  ['402','lc','lc','พิษณุโลก → ลพบุรี 1',null,'14:10',2,4,90,0,'N','S'],
+  ['408','lc','lc','เชียงใหม่ → นครสวรรค์','17:11','17:12',3,4,50,40,'N','S'],
+  ['410','lc','lc','ศิลาอาสน์ → พิษณุโลก','18:10',null,3,4,0,80,'N','S'],
+  ['108','rp','rp','เด่นชัย → '+BKK,'22:03','22:05',3,10,100,50,'N','S'],
+  ['52','ex','rp','เชียงใหม่ → '+BKK,'23:01','23:03',3,10,90,40,'N','S'],
 ];
-const TRAINS = RAW.map(([no,kind,liv,route,arr,dep,plat,cars,board,alight,from,to], i) => {
-  const d = {i, no, kind, liv, route, plat, cars, board, alight, from, to};
-  d.dep = dep ? hm(dep) : hm(arr) + 15*60;
-  d.arr = arr ? hm(arr) : d.dep - 20*60;
+const DAY0 = hm('03:00'), DAY1 = hm('27:00');
+const dayT = t => t < DAY0 ? t + 86400 : t;
+const TRAINS = RAW.map(([no,kind,liv,route,arr,dep,plat,cars,board,alight,from,to]) => {
+  const d = {no, kind, liv, route, plat, cars, board, alight, from, to};
+  d.dep = dep ? dayT(hm(dep)) : dayT(hm(arr)) + 15*60;
+  d.arr = arr ? dayT(hm(arr)) : d.dep - 20*60;
   d.origin = !arr; d.term = !dep;
   d.layout = trainLayout(d);
   return d;
-});
+}).sort((a, b) => a.arr - b.arr);
+TRAINS.forEach((d, i) => d.i = i);
 function resetTrains(){ for(const d of TRAINS){ if(d.mesh){ scene.remove(d.mesh); d.mesh = null; } Object.assign(d, {status:'sched', spawnInit:false, spawn:[], si:0, alightLeft:-1, alAcc:0, boarded:0, alighted:0, boardTotal:0, alightTotal:0}); } }
 resetTrains();
 
@@ -1143,7 +1151,7 @@ function flyTo(k, instant){
   if(k === 'building') setXray(true);
 }
 document.querySelectorAll('[data-cam]').forEach(b => b.addEventListener('click', () => flyTo(b.dataset.cam)));
-$('#reset').addEventListener('click', () => startDay(hm('05:30')));
+$('#reset').addEventListener('click', () => startDay(DAY0));
 
 const STAT = {sched:['รอ',''], app:['กำลังเข้า','app'], dwell:['จอดรับส่ง','dw'], dep:['กำลังออก','dep'], gone:['ออกแล้ว','gone']};
 const schedEl = $('#sched');
@@ -1228,7 +1236,7 @@ function frame(now){
     const sim = dt * speed, n = Math.min(16, Math.max(1, Math.ceil(sim/0.25))), h = sim/n;
     for(let i=0;i<n;i++) step(h, i === n-1);
     if(simT - lastSample >= 60){ lastSample = simT; spark.push(agents.length); if(spark.length > 240) spark.shift(); sparkDraw(); }
-    if(simT > hm('23:20')) startDay(hm('05:30'));
+    if(simT > DAY1) startDay(DAY0);
   }
   if(fly){ const k = Math.min(1, (now - fly.s)/1100), e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k+2, 2)/2;
     camera.position.lerpVectors(fly.p0, fly.p, e); controls.target.lerpVectors(fly.t0, fly.t, e); if(k >= 1) fly = null; }
@@ -1251,7 +1259,7 @@ function init(){
   label('ลานจอดรถ', -61, 5, -150, 14);
   label('ทางข้ามระดับ (ปิด)', -12, 4, 238, 20).name = 'xlabel';
   resize(); flyTo('overview', true);
-  startDay(hm('05:00'), hm('06:33') + 20);
+  startDay(DAY0, hm('07:21'));
   $('#loading').hidden = true;
   requestAnimationFrame(t => { last = t; frame(t); });
 }
