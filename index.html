@@ -210,6 +210,7 @@ details p{margin:6px 0 0;max-width:62ch}
       <button class="btn" data-cam="building">อาคารสถานี</button>
       <button class="btn" data-cam="platform">ชานชาลา</button>
       <button class="btn" data-cam="bridge">สะพานลอย</button>
+      <button class="btn" data-cam="city">ตัวเมืองและแม่น้ำน่าน</button>
       <button class="btn" id="reset">เริ่มวันใหม่</button>
     </div>
   </div>
@@ -257,6 +258,7 @@ details p{margin:6px 0 0;max-width:62ch}
         <summary>เกี่ยวกับแบบจำลองนี้</summary>
         <p>ผังรางและอาคารประมาณจากภาพถ่ายดาวเทียมที่แนบมา ระยะต่างๆ เป็นค่าโดยประมาณ ไม่ใช่แบบก่อสร้างจริง</p>
         <p>เวลาถึงและเวลาออกของ 22 ขบวนมาจากตารางเดินรถสถานีรถไฟพิษณุโลกของ รฟท. ส่วนการกำหนดชานชาลา (ขึ้นเหนือชานชาลา 1, ล่องใต้ชานชาลา 3, ขบวนท้องถิ่นต้นทาง/ปลายทางชานชาลา 2) และจำนวนผู้โดยสารเป็นค่าสมมติ วันจำลองเริ่ม 03:00 และวนรอบที่ 03:00 ของวันถัดไป</p>
+        <p>ภูมิประเทศรอบสถานีรัศมีราว 7 กม. จำลองจากภูมิศาสตร์จริงแบบย่อ เป็นภูมิประเทศ 3 มิติพร้อมเงานูนต่ำและเส้นชั้นความสูงทุก 10 ม. ได้แก่ แม่น้ำน่านห่างไปทางตะวันตกราว 800 ม. ตัวเมืองและวัดพระศรีรัตนมหาธาตุริมฝั่งตะวันออก ทุ่งนารอบเมือง สนามบินทางทิศใต้ และทิวเขาทางไปวังทองทางทิศตะวันออก ตำแหน่งเป็นค่าโดยประมาณ ไม่ใช่ข้อมูลแผนที่จริง</p>
         <p>ผู้โดยสารเดินราว 1.3 ม./วินาที บันไดรับได้ 0.8 คน/วินาที ต่อความกว้าง 1 เมตร ระดับบริการคำนวณจากความหนาแน่นสูงสุดในพื้นที่ 4.5×4.5 ม. ตามเกณฑ์พื้นที่รอคอยของ Fruin</p>
       </details>
     </section>
@@ -284,10 +286,10 @@ renderer.toneMappingExposure = 1.0;
 const ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xc7d8e0, 420, 1150);
-const camera = new THREE.PerspectiveCamera(42, 1, 0.3, 4000);
+const camera = new THREE.PerspectiveCamera(42, 1, 0.3, 20000);
 const controls = new THREE.OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.maxPolarAngle = Math.PI*0.48;
-controls.minDistance = 4; controls.maxDistance = 900;
+controls.minDistance = 4; controls.maxDistance = 7000;
 const hemi = new THREE.HemisphereLight(0xdcecff, 0x6f604a, 0.55); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d8, 1.6);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
@@ -442,7 +444,7 @@ function gableRoof(x0, x1, z0, z1, y, rise, roofMat, endColor, oh = 1.2){
 }
 
 // ---------------------------------------------------------------- ground, roads, traffic
-{ const gp = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), M.grass); gp.rotation.x = -Math.PI/2; gp.receiveShadow = true; scene.add(gp); }
+{ const gp = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1800), std({map:rep(T.grass, 126, 189)})); gp.rotation.x = -Math.PI/2; gp.receiveShadow = true; scene.add(gp); }
 slab(-17.5, 41, -900, 900, 0, 0.12, M.ballast, false);                 // yard ballast bed
 slab(41, 60, -900, 900, 0, 0.04, M.dirt, false);                       // service strip east of yard
 slab(-86, -66, -900, 900, 0, 0.05, M.asphalt, false);                  // west road (4 lanes)
@@ -735,8 +737,124 @@ gableRoof(-61, -34, 174, 264, 6, 4, M.roofTile, 0xe6d6b5);
   inst(new THREE.IcosahedronGeometry(1, 1), std({flatShading:true, roughness:0.9}), crowns, true, cc);
 }
 
+// ---------------------------------------------------------------- terrain and town around the station
+// simplified from the real surroundings: the Nan River runs north–south about 800 m west of the station,
+// the old town and Wat Phra Si Rattana Mahathat sit on its east bank, rice fields ring the city,
+// the airport lies about 3 km south and the hills toward Wang Thong rise in the east.
+// north is -z, east is +x; one unit is one metre
+const TERR = 7000, LS = 2048;
+const riverX = z => -800 + 110*Math.sin(z/950 + 0.6) + 45*Math.sin(z/330 + 2.0);
+function vnoise(x, z){
+  const s = (a, b) => { const n = Math.sin(a*127.1 + b*311.7)*43758.5453; return n - Math.floor(n); };
+  const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi, u = xf*xf*(3-2*xf), v = zf*zf*(3-2*zf);
+  const L = THREE.MathUtils.lerp; return L(L(s(xi,zi), s(xi+1,zi), u), L(s(xi,zi+1), s(xi+1,zi+1), u), v);
+}
+const fbm = (x, z) => vnoise(x, z)*0.5 + vnoise(x*2.1+5, z*2.1)*0.3 + vnoise(x*4.3, z*4.3+9)*0.2;
+const cityR = (x, z) => Math.hypot((x + 450)/2100, (z + 150)/2700) + (fbm(x/600, z/600) - 0.5)*0.35;   // < 1 inside the town
+const SS = THREE.MathUtils.smoothstep;
+function terrainH(x, z){
+  const ox = Math.max(0, Math.abs(x) - 600), oz = Math.max(0, Math.abs(z) - 900), k = SS(Math.hypot(ox, oz), 0, 500);
+  let h = k*(SS(Math.hypot(x, z/1.2), 1300, 2600)*(fbm(x/900, z/900) - 0.35)*16);
+  h += SS(x, 3600, 6300)*(110 + 420*fbm(z/1500 + 3, x/1500));                    // hills toward Wang Thong
+  h += SS(-z, 4200, 6800)*SS(x, 800, 3500)*90*fbm(x/1200, z/1200 + 4);            // low hills to the north-east
+  h -= 7*(1 - SS(Math.abs(x - riverX(z)), 55, 125));                              // river channel
+  return h - 0.5;
+}
+const ROADS = [
+  [[-7000,-1680],[-2200,-1600],[-900,-1500],[0,-1460],[1500,-1520],[7000,-1720]],   // highway 12, east–west
+  [[-7000,760],[-1500,620],[-700,520],[2000,640],[7000,940]],
+  [[2450,-7000],[2300,-2200],[2500,0],[2620,3000],[2900,7000]],                      // eastern bypass
+  [[-76,-7000],[-76,7000]],                                                           // road along the railway
+  [[-150,560],[-420,2300],[-640,3150]],                                               // to the airport
+  [[-7000,-3600],[-2600,-2500],[-1000,-1560]],                                        // toward Sukhothai
+];
+const WAT = {x:riverX(-1250) + 170, z:-1250}, AIR = {x:-760, z:3350, ang:Math.atan2(0.643, -0.766)};
+// land-use map draped over the terrain
+const landTex = ctex(LS, LS, (g, W, H) => {
+  const P = v => (v + TERR)/(2*TERR)*W, S = v => v/(2*TERR)*W;
+  g.fillStyle = '#7f9b4c'; g.fillRect(0, 0, W, H);
+  const paddy = ['#8fae4f','#a4b85b','#73933f','#bdb46a','#98905a','#628b3d','#86a85a'];
+  for(let i=0;i<14000;i++){
+    const x = (rnd()*2 - 1)*TERR, z = (rnd()*2 - 1)*TERR, w = 50 + rnd()*170, d = 40 + rnd()*140, a = (fbm(x/3000, z/3000) - 0.5)*0.8;
+    g.save(); g.translate(P(x), P(z)); g.rotate(a); g.fillStyle = pick(paddy); g.fillRect(-S(w)/2, -S(d)/2, S(w), S(d));
+    g.strokeStyle = 'rgba(70,80,40,.35)'; g.lineWidth = 0.6; g.strokeRect(-S(w)/2, -S(d)/2, S(w), S(d)); g.restore();
+  }
+  g.fillStyle = 'rgba(52,84,38,.85)';                                                // village tree clumps
+  for(let i=0;i<900;i++){ const x = (rnd()*2 - 1)*TERR, z = (rnd()*2 - 1)*TERR; g.beginPath(); g.arc(P(x), P(z), S(18 + rnd()*70), 0, 7); g.fill(); }
+  { const gr = g.createLinearGradient(P(3300), 0, P(5200), 0); gr.addColorStop(0, 'rgba(58,86,44,0)'); gr.addColorStop(1, 'rgba(58,86,44,1)'); g.fillStyle = gr; g.fillRect(P(3300), 0, W, H); }
+  const blocks = ['#aaa497','#b9b1a3','#9d988e','#c3baa9','#a59f95'];
+  for(let z=-3600; z<3400; z+=34) for(let x=-3200; x<2400; x+=34){ const r = cityR(x, z); if(r > 1.05) continue;
+    g.fillStyle = r > 0.95 ? 'rgba(160,154,144,.55)' : pick(blocks); g.fillRect(P(x)+0.4, P(z)+0.4, S(30), S(30)); }
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const line = (pts, w, col) => { g.strokeStyle = col; g.lineWidth = Math.max(1, S(w)); g.beginPath(); pts.forEach(([x, z], i) => i ? g.lineTo(P(x), P(z)) : g.moveTo(P(x), P(z))); g.stroke(); };
+  const rv = []; for(let z=-TERR; z<=TERR; z+=40) rv.push([riverX(z), z]);
+  line(rv, 190, '#4d6c35'); line(rv, 112, '#4a7d8e');
+  line([[-2600,-7000],[-2300,-2600],[-1900,0],[-2100,7000]], 14, '#5d8d99');        // irrigation canals
+  line([[1200,-7000],[1100,-2500],[1500,1200],[1300,7000]], 12, '#5d8d99');
+  for(const L of ROADS) line(L, 20, '#7d786e');
+  line([[12,-TERR],[12,TERR]], 14, '#6f655b');                                         // railway
+  g.save(); g.translate(P(AIR.x), P(AIR.z)); g.rotate(-AIR.ang + Math.PI/2);
+  g.fillStyle = '#b9b7ae'; g.fillRect(-S(300), -S(220), S(600), S(440)); g.fillStyle = '#d0cec6'; g.fillRect(-S(1500), -S(24), S(3000), S(48)); g.restore();
+  g.fillStyle = '#d8c9a0'; g.fillRect(P(WAT.x - 90), P(WAT.z - 70), S(180), S(140));
+  // the detailed station area keeps its own grass ground; blend the map into that grass colour around it
+  { const gi = T.grass.image, gc = document.createElement('canvas'); gc.width = gc.height = 1; const gg = gc.getContext('2d'); gg.drawImage(gi, 0, 0, 1, 1);
+    const [r, gr, b] = gg.getImageData(0, 0, 1, 1).data;
+    for(let e=220; e>=0; e-=20){ g.fillStyle = `rgba(${r},${gr},${b},${e ? 0.16 : 1})`; g.fillRect(P(-600 - e), P(-900 - e), S(1200 + 2*e), S(1800 + 2*e)); } }
+  line([[-76,-TERR],[-76,TERR]], 20, '#7d786e'); line([[12,-TERR],[12,TERR]], 14, '#6f655b');
+  // relief: hillshade lit from the north-west plus 10 m contour lines, like a topographic map
+  const N = 1024, cell = 2*TERR/N, hgt = new Float32Array(N*N);
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++) hgt[j*N+i] = terrainH(-TERR + (i+0.5)*cell, -TERR + (j+0.5)*cell);
+  const sh = g.createImageData(N, N), ct = g.createImageData(N, N);
+  for(let j=1;j<N-1;j++) for(let i=1;i<N-1;i++){
+    const k = j*N+i, dx = (hgt[k+1] - hgt[k-1])/(2*cell), dz = (hgt[k+N] - hgt[k-N])/(2*cell);
+    const nl = Math.hypot(dx*4, 1, dz*4), lit = (-dx*4*-0.6 + 1*0.7 + -dz*4*-0.4)/nl;          // light from the north-west
+    const v = Math.max(0, Math.min(255, 128 + (lit - 0.7)*420)), o = k*4;
+    sh.data[o] = sh.data[o+1] = sh.data[o+2] = v; sh.data[o+3] = 255;
+    const c0 = Math.floor(hgt[k]/10), edge = c0 !== Math.floor(hgt[k+1]/10) || c0 !== Math.floor(hgt[k+N]/10);
+    if(edge && hgt[k] > 2){ const major = Math.floor(hgt[k]/50) !== Math.floor(hgt[k+1]/50) || Math.floor(hgt[k]/50) !== Math.floor(hgt[k+N]/50);
+      ct.data[o] = 110; ct.data[o+1] = 78; ct.data[o+2] = 44; ct.data[o+3] = major ? 230 : 120; }
+  }
+  const tmp = document.createElement('canvas'); tmp.width = tmp.height = N; const tg = tmp.getContext('2d');
+  tg.putImageData(sh, 0, 0); g.globalCompositeOperation = 'overlay'; g.drawImage(tmp, 0, 0, W, H);
+  tg.clearRect(0, 0, N, N); tg.putImageData(ct, 0, 0); g.globalCompositeOperation = 'source-over'; g.drawImage(tmp, 0, 0, W, H);
+});
+landTex.wrapS = landTex.wrapT = THREE.ClampToEdgeWrapping;
+{ const N = 350, geo = new THREE.PlaneGeometry(2*TERR, 2*TERR, N, N).rotateX(-Math.PI/2), pos = geo.attributes.position;
+  for(let i=0;i<pos.count;i++) pos.setY(i, terrainH(pos.getX(i), pos.getZ(i)));
+  geo.computeVertexNormals();
+  const t = new THREE.Mesh(geo, std({map:landTex, roughness:0.95})); t.receiveShadow = true; scene.add(t);
+  // the river surface
+  const v = [], idx = []; let n = 0;
+  for(let z=-TERR; z<=TERR; z+=30){ const x = riverX(z); v.push(x - 60, -1.3, z, x + 60, -1.3, z); if(n) idx.push(2*n-2, 2*n-1, 2*n, 2*n-1, 2*n+1, 2*n); n++; }
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); rg.setIndex(idx); rg.computeVertexNormals();
+  scene.add(new THREE.Mesh(rg, std({color:0x3d6c7c, roughness:0.12, metalness:0.2})));
+  // road bridges over the Nan
+  for(const z of [-1250, -1520, -250, 560]) box(200, 1.2, 16, std({color:0xb9b6ae}), riverX(z), 1.4, z);
+}
+// trees: village clumps across the fields and lines along both river banks
+{ const trunks = [], crowns = [], cc = [], greens = [0x46703a, 0x557f40, 0x3d6532, 0x62894a].map(c => new THREE.Color(c));
+  const tree = (x, z, s) => { const y = terrainH(x, z); trunks.push([x, y, z, 0, s, s*1.2, s]); crowns.push([x, y + 5.4*s, z, rnd()*6, 3.2*s, 2.6*s, 3.2*s]); cc.push(pick(greens)); };
+  const keepOut = (x, z) => Math.abs(x) < 640 && Math.abs(z) < 940;               // leave the station area as it is
+  for(let i=0;i<2600;i++){ const z = (rnd()*2 - 1)*6000, side = rnd() < 0.5 ? -1 : 1, x = riverX(z) + side*(75 + rnd()*90); if(!keepOut(x, z)) tree(x, z, 0.9 + rnd()*0.8); }
+  for(let i=0;i<700;i++){ const x = (rnd()*2 - 1)*6200, z = (rnd()*2 - 1)*6200; if(cityR(x, z) < 1.05 || Math.abs(x - riverX(z)) < 90 || x > 4300 || keepOut(x, z)) continue;
+    for(let n=0;n<14;n++){ const a = rnd()*6.28, r = rnd()*55; tree(x + Math.cos(a)*r, z + Math.sin(a)*r, 0.8 + rnd()*0.9); } }
+  inst(new THREE.CylinderGeometry(0.25, 0.4, 4.6, 6).translate(0, 2.3, 0), std({color:0x6b4e35}), trunks, false);
+  inst(new THREE.IcosahedronGeometry(1, 0), std({flatShading:true, roughness:0.9}), crowns, false, cc);
+}
+// Wat Phra Si Rattana Mahathat (Wat Yai): the gilded prang on a white base beside the vihara
+{ const y = terrainH(WAT.x, WAT.z), white = std({color:0xf4f0e6}), gold = std({color:0xd9a93b, metalness:0.6, roughness:0.35}), red = std({color:0xa8402c});
+  box(70, 1.2, 60, std({color:0xd8cfb8}), WAT.x, y, WAT.z);
+  mesh(new THREE.BoxGeometry(16, 10, 16), white, WAT.x, y + 6.2, WAT.z);
+  mesh(new THREE.CylinderGeometry(3.2, 6.5, 26, 8), white, WAT.x, y + 24, WAT.z);
+  mesh(new THREE.CylinderGeometry(0.6, 3.2, 9, 8), gold, WAT.x, y + 41.5, WAT.z);
+  box(14, 9, 34, white, WAT.x - 22, y + 1.2, WAT.z + 4);
+  mesh(new THREE.CylinderGeometry(0, 12, 8, 4, 1).rotateY(Math.PI/4).scale(0.75, 1, 1.7), red, WAT.x - 22, y + 14, WAT.z + 4);
+  box(10, 6, 22, white, WAT.x + 22, y + 1.2, WAT.z - 6);
+  mesh(new THREE.CylinderGeometry(0, 9, 6, 4, 1).rotateY(Math.PI/4).scale(0.75, 1, 1.6), red, WAT.x + 22, y + 10, WAT.z - 6);
+}
+
 // ---------------------------------------------------------------- labels
-const labels = [];
+const labels = [], MAPL = [];
 function label(text, x, y, z, w = 22){
   const c = document.createElement('canvas'); c.width = 512; c.height = 112;
   const g = c.getContext('2d'); g.fillStyle = 'rgba(14,20,22,0.82)';
@@ -1222,6 +1340,7 @@ toggle('#tXray', setXray);
 toggle('#tLabels', on => labels.forEach(l => l.visible = on));
 toggle('#tState', on => stateColors = on);
 toggle('#tLight', on => fixedNoon = !on);
+
 { const bar = $('#bar'), setH = () => document.documentElement.style.setProperty('--barH', bar.offsetHeight + 'px'); setH(); if(window.ResizeObserver) new ResizeObserver(setH).observe(bar); addEventListener('resize', setH); }
 function setPanel(min){ const p = $('#panel'); p.classList.toggle('min', min); $('#panelToggle').textContent = min ? 'ขยาย' : 'ย่อ'; $('#panelToggle').setAttribute('aria-expanded', !min); try { localStorage.setItem('panelMin', min ? '1' : '0'); } catch(e){} }
 $('#panelToggle').addEventListener('click', () => setPanel(!$('#panel').classList.contains('min')));
@@ -1232,6 +1351,7 @@ const CAMS = {
   building:{p:[-120, 45, 95], t:[-32, 2, 40]},
   platform:{p:[-42, 15, 118], t:[-10, 1, 30]},
   bridge:{p:[-48, 26, -112], t:[-4, 6, -50]},
+  city:{p:[1500, 1500, 1700], t:[-500, 0, -300]},
 };
 let fly = null;
 function flyTo(k, instant){
@@ -1467,6 +1587,11 @@ function frame(now){
   if(fly){ const k = Math.min(1, (now - fly.s)/1100), e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k+2, 2)/2;
     camera.position.lerpVectors(fly.p0, fly.p, e); controls.target.lerpVectors(fly.t0, fly.t, e); if(k >= 1) fly = null; }
   controls.update();
+  { const d = camera.position.distanceTo(controls.target);
+    scene.fog.near = 420 + d*0.9; scene.fog.far = Math.min(16000, 1150 + d*6);
+    const nr = Math.max(0.3, d*0.004); if(Math.abs(camera.near - nr) > 0.05){ camera.near = nr; camera.updateProjectionMatrix(); }
+    const show = $('#tLabels').getAttribute('aria-pressed') === 'true'; for(const l of MAPL) l.visible = show && d > 450;
+    for(const l of labels) if(!MAPL.includes(l)) l.visible = show && d < 2500; }
   updateTraffic(dt); updateLighting(simT); updateFade();
   const cm = Math.floor(simT/60); if(cm !== lastClockMin){ lastClockMin = cm; drawClock(simT); }
   uiT += dt; heatT += dt;
@@ -1484,6 +1609,8 @@ function init(){
   label('ทางเข้าฝั่งตะวันออก', 80, 6, -16, 24);
   label('ลานจอดรถ', -61, 5, -150, 14);
   label('ทางข้ามระดับ (ปิด)', -12, 4, 238, 20).name = 'xlabel';
+  MAPL.push(label('แม่น้ำน่าน', riverX(-500), 18, -500, 24), label('วัดใหญ่ (พระศรีฯ)', WAT.x, 60, WAT.z, 26),
+    label('สนามบินพิษณุโลก', AIR.x, 30, AIR.z, 26), label('ตัวเมืองพิษณุโลก', -1500, 70, 300, 26), label('ทิวเขาทางไปวังทอง', 5200, 600, -400, 26));
   resize(); flyTo('overview', true);
   histOptions(); startDay(DAY0, hm('07:21'));
   $('#loading').hidden = true;
