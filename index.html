@@ -292,7 +292,7 @@ controls.enableDamping = true; controls.maxPolarAngle = Math.PI*0.48;
 controls.minDistance = 4; controls.maxDistance = 7000;
 const hemi = new THREE.HemisphereLight(0xdcecff, 0x6f604a, 0.55); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d8, 1.6);
-sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+sun.castShadow = true; { const ms = Math.min(4096, renderer.capabilities.maxTextureSize); sun.shadow.mapSize.set(ms, ms); }
 Object.assign(sun.shadow.camera, {left:-180, right:180, top:250, bottom:-250, near:20, far:900});
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
 sun.target.position.set(-5, 0, 40);
@@ -415,6 +415,7 @@ const _o = new THREE.Object3D();
 function inst(geo, mat, list, cast = true, colors){
   const im = new THREE.InstancedMesh(geo, mat, list.length);
   list.forEach((p, i) => { _o.position.set(p[0], p[1], p[2]); _o.rotation.set(p[7]||0, p[3]||0, p[8]||0); _o.scale.set(p[4]||1, p[5]||1, p[6]||1); _o.updateMatrix(); im.setMatrixAt(i, _o.matrix); if(colors) im.setColorAt(i, colors[i]); });
+  im.frustumCulled = false;   // instances spread far from the mesh origin, so the default culling sphere would hide them
   im.castShadow = cast; im.receiveShadow = true; scene.add(im); return im;
 }
 // wall material with a repeating bay texture (u repeat follows wall length)
@@ -886,6 +887,19 @@ landTex.wrapS = landTex.wrapT = THREE.ClampToEdgeWrapping;
   for(let i=0;i<W_X.length-1;i++) for(let k=0;k<W_Z.length-1;k++) fillBlock(W_X[i] + 4, W_X[i+1] - 4, W_Z[k] + 4.5, W_Z[k+1] - 4.5);
   for(let i=0;i<E_X.length-1;i++) for(let k=0;k<E_Z.length-1;k++) fillBlock(E_X[i] + 4, E_X[i+1] - 4, E_Z[k] + 4.5, E_Z[k+1] - 4.5);
   inst(new THREE.BoxGeometry(1, 1, 1), [fm, fm, top, top, fm, fm], boxes, true, bcol);
+  // street lamps: warm pools of light along every street with a small lamp head on a pole
+  { const glow = ctex(128, 128, (g, w, h) => { const r = g.createRadialGradient(64,64,0,64,64,64); r.addColorStop(0, 'rgba(255,205,135,0.85)'); r.addColorStop(0.35, 'rgba(255,175,95,0.3)'); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0,0,w,h); });
+    const pm = new THREE.MeshBasicMaterial({map:glow, transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}); NIGHT.mats.push(pm);
+    const lp = [], poles = [], heads = [];
+    const lamp = (x, z) => { lp.push([x, 0.09, z, 0, 15, 1, 15]); poles.push([x, 0, z, 0, 1, 1, 1]); heads.push([x, 6.1, z, 0, 1, 1, 1]); };
+    for(const z of W_Z.slice(1, -1)) for(let x=-585; x<-95; x+=34) lamp(x, z + 3);
+    for(const x of W_X.slice(1, -1)) for(let z=-885; z<890; z+=34) lamp(x + 3, z);
+    for(const z of E_Z.slice(1, -1)) for(let x=125; x<595; x+=34) lamp(x, z + 3);
+    for(const x of E_X.slice(1, -1)) for(let z=-885; z<890; z+=34) lamp(x + 3, z);
+    for(let z=-885; z<890; z+=34) lamp(113, z);
+    inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI/2), pm, lp, false).renderOrder = 3;
+    inst(new THREE.CylinderGeometry(0.07, 0.1, 6.2, 5).translate(0, 3.1, 0), M.dark, poles, false);
+    inst(new THREE.BoxGeometry(0.5, 0.15, 0.3), M.lamp, heads, false); }
   const tri = new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)]);
   inst(new THREE.ExtrudeGeometry(tri, {depth:1, bevelEnabled:false}).translate(0, 0, -0.5), std({roughness:0.6, metalness:0.25}), roofs, true, rcol);
   inst(new THREE.CylinderGeometry(0.2, 0.34, 4, 6).translate(0, 2, 0), std({color:0x6b4e35}), trunks, false);
@@ -1034,7 +1048,7 @@ function updateLighting(t){
   const hr = fixedNoon ? 10.5 : (t/3600) % 24, a = (hr - 6)/12*Math.PI;
   const dir = new THREE.Vector3(Math.cos(a), Math.sin(a), 0.32).normalize();
   const el = dir.y, day = THREE.MathUtils.smoothstep(el, -0.08, 0.22), dusk = Math.max(0, 1 - Math.abs(el - 0.04)/0.18);
-  sun.position.copy(sun.target.position).addScaledVector(dir, 420);
+  sun.position.copy(sun.target.position).addScaledVector(dir, Math.max(420, shadowR*1.6));
   sun.intensity = 1.75 * day; sun.color.setHex(0xfff2d8).lerp(_c2.setHex(0xffa060), dusk*0.8);
   hemi.intensity = 0.16 + 0.42*day; hemi.color.setHex(0xdcecff).lerp(_c2.setHex(0x4a5d88), 1 - day);
   const k = dusk > 0.05 ? dusk : 0;
@@ -1047,6 +1061,19 @@ function updateLighting(t){
   const lampOn = THREE.MathUtils.smoothstep(night, 0.25, 0.75);
   for(const m of NIGHT.mats) m.opacity = lampOn*0.85;
   for(const l of NIGHT.lights) l.intensity = lampOn*2.2;
+}
+// the sun's shadow box follows what the camera looks at: tight and sharp up close, wide enough for the
+// whole neighbourhood when zoomed out
+let shadowR = 0;
+function updateShadowArea(){
+  const d = camera.position.distanceTo(controls.target), R = Math.round(THREE.MathUtils.clamp(d*0.7, 180, 1200)/20)*20;
+  const tx = THREE.MathUtils.clamp(controls.target.x, -600, 600), tz = THREE.MathUtils.clamp(controls.target.z, -900, 900);
+  if(Math.abs(sun.target.position.x - tx) > R*0.08 || Math.abs(sun.target.position.z - tz) > R*0.08 || R !== shadowR){
+    sun.target.position.set(Math.round(tx/10)*10, 0, Math.round(tz/10)*10); sun.target.updateMatrixWorld();
+  }
+  if(R !== shadowR){ shadowR = R; const c = sun.shadow.camera;
+    Object.assign(c, {left:-R, right:R, top:R, bottom:-R, near:10, far:R*3 + 600}); c.updateProjectionMatrix();
+    sun.shadow.normalBias = 0.04*R/220; }
 }
 function updateSignals(){
   for(const p of [1,2,3]) for(const end of ['N','S']){
@@ -1647,6 +1674,7 @@ function frame(now){
   if(fly){ const k = Math.min(1, (now - fly.s)/1100), e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k+2, 2)/2;
     camera.position.lerpVectors(fly.p0, fly.p, e); controls.target.lerpVectors(fly.t0, fly.t, e); if(k >= 1) fly = null; }
   controls.update();
+  updateShadowArea();
   { const d = camera.position.distanceTo(controls.target);
     scene.fog.near = 420 + d*0.9; scene.fog.far = Math.min(16000, 1150 + d*6);
     const nr = Math.max(0.3, d*0.004); if(Math.abs(camera.near - nr) > 0.05){ camera.near = nr; camera.updateProjectionMatrix(); }
