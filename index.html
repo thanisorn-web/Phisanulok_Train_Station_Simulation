@@ -125,17 +125,10 @@ details p{margin:6px 0 0;max-width:62ch}
 .sel{display:flex;align-items:center;gap:6px}
 .toast{position:fixed;left:50%;top:calc(80px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--panel-solid);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font:500 12.5px var(--f-body);color:var(--accent);z-index:8}
 .toast[hidden]{display:none}
-.minimap{padding:8px 10px 10px;width:240px}
-.minimap[hidden]{display:none}
-.mm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-family:var(--f-display);font-weight:600;font-size:12.5px}
-.minimap canvas{display:block;width:100%;aspect-ratio:1;border-radius:7px;cursor:crosshair;border:1px solid var(--line)}
-.mm-foot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px}
-.mm-foot .seg button{padding:3px 7px;font-size:11px}
 .loading{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);color:var(--muted);font:500 14px var(--f-body);z-index:9}
 
 @media (max-width:860px){
   .hud{max-width:calc(100vw - 32px)}
-  .minimap{width:180px}
   .brand{padding:8px 12px}.brand h1{font-size:15px}.clock{font-size:20px}
   .legend{display:none}
   .dock{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;padding:8px 12px;bottom:calc(8px + env(safe-area-inset-bottom,0px))}
@@ -168,13 +161,6 @@ details p{margin:6px 0 0;max-width:62ch}
     <span><i style="background:var(--bad)"></i>ตกขบวน</span>
     <span>(วงแหวนใต้เท้า)</span>
     <span>ความหนาแน่น LOS A<span class="bar"></span>F</span>
-  </div>
-  <div class="card minimap" id="minimap">
-    <div class="mm-head"><span>แผนที่รอบสถานี</span><span class="lbl" id="mmCoord"></span></div>
-    <canvas id="mm" width="480" height="480" role="button" aria-label="แผนที่รอบสถานี แตะเพื่อย้ายกล้องไปยังจุดนั้น"></canvas>
-    <div class="mm-foot"><span class="lbl">แตะเพื่อย้ายกล้อง</span>
-      <div class="seg" role="group" aria-label="ระยะแผนที่" id="mmZoom"><button data-r="1000" aria-pressed="false">1 กม.</button><button data-r="2500" aria-pressed="true">2.5 กม.</button><button data-r="6500" aria-pressed="false">6.5 กม.</button></div>
-    </div>
   </div>
 </div>
 
@@ -217,7 +203,6 @@ details p{margin:6px 0 0;max-width:62ch}
       <button class="chip" id="tLabels" aria-pressed="true">ป้ายชื่อ</button>
       <button class="chip" id="tState" aria-pressed="false">สีเสื้อตามสถานะ</button>
       <button class="chip" id="tLight" aria-pressed="true">แสงตามเวลาจริง</button>
-      <button class="chip" id="tMap" aria-pressed="true">แผนที่รอบสถานี</button>
     </div>
     <div class="chips" aria-label="มุมกล้อง">
       <span class="lbl" style="align-self:center">มุมกล้อง</span>
@@ -784,7 +769,7 @@ const ROADS = [
   [[-7000,-3600],[-2600,-2500],[-1000,-1560]],                                        // toward Sukhothai
 ];
 const WAT = {x:riverX(-1250) + 170, z:-1250}, AIR = {x:-760, z:3350, ang:Math.atan2(0.643, -0.766)};
-// land-use map: also drawn in the mini map
+// land-use map draped over the terrain
 const landTex = ctex(LS, LS, (g, W, H) => {
   const P = v => (v + TERR)/(2*TERR)*W, S = v => v/(2*TERR)*W;
   g.fillStyle = '#7f9b4c'; g.fillRect(0, 0, W, H);
@@ -1345,54 +1330,7 @@ toggle('#tXray', setXray);
 toggle('#tLabels', on => labels.forEach(l => l.visible = on));
 toggle('#tState', on => stateColors = on);
 toggle('#tLight', on => fixedNoon = !on);
-// ---------------------------------------------------------------- mini map, linked both ways with the 3D camera
-const MM = {c:$('#mm'), r:2500}, MARKS = [
-  {x:-20, z:120, name:'สถานีพิษณุโลก', col:'#e8c547', big:true},
-  {x:WAT.x, z:WAT.z, name:'วัดใหญ่', col:'#f0d48a'},
-  {x:AIR.x, z:AIR.z, name:'สนามบิน', col:'#d0d6dc'},
-  {x:riverX(-2300), z:-2300, name:'แม่น้ำน่าน', col:'#9fd0de'},
-  {x:-1500, z:300, name:'ตัวเมือง', col:'#e4ebe9'},
-  {x:4600, z:-500, name:'ทิวเขา (วังทอง)', col:'#b9d2a0'},
-];
-function drawMinimap(){
-  const c = MM.c, g = c.getContext('2d'), W = c.width, R = MM.r, img = landTex.image, k = img.width/(2*TERR);
-  const cx = THREE.MathUtils.clamp(controls.target.x, -TERR + R, TERR - R), cz = THREE.MathUtils.clamp(controls.target.z, -TERR + R, TERR - R);
-  MM.cx = cx; MM.cz = cz;
-  g.drawImage(img, (cx - R + TERR)*k, (cz - R + TERR)*k, 2*R*k, 2*R*k, 0, 0, W, W);
-  const X = x => (x - cx + R)/(2*R)*W, Z = z => (z - cz + R)/(2*R)*W;
-  g.fillStyle = 'rgba(10,16,18,.18)'; g.fillRect(0, 0, W, W);
-  // what the camera sees: a wedge from the camera's ground position along its heading
-  const fw = new THREE.Vector3(); camera.getWorldDirection(fw); const ang = Math.atan2(fw.z, fw.x), half = 0.45;
-  const camD = camera.position.distanceTo(controls.target), reach = Math.max(R*0.18, Math.min(R*1.2, camD*2.2));
-  g.fillStyle = 'rgba(232,197,71,.22)'; g.strokeStyle = 'rgba(232,197,71,.8)'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(X(camera.position.x), Z(camera.position.z));
-  g.arc(X(camera.position.x), Z(camera.position.z), reach/(2*R)*W, ang - half, ang + half); g.closePath(); g.fill(); g.stroke();
-  g.font = '600 19px "IBM Plex Sans Thai", sans-serif'; g.textBaseline = 'middle';
-  for(const m of MARKS){ const x = X(m.x), z = Z(m.z); if(x < -20 || x > W + 20 || z < -20 || z > W + 20) continue;
-    g.fillStyle = m.col; g.beginPath(); g.arc(x, z, m.big ? 7 : 5, 0, 7); g.fill(); g.strokeStyle = '#11181a'; g.lineWidth = 2; g.stroke();
-    const tw = g.measureText(m.name).width, tx = Math.min(W - tw - 6, Math.max(6, x + 10));
-    g.lineWidth = 4; g.strokeStyle = 'rgba(14,20,22,.85)'; g.strokeText(m.name, tx, z); g.fillStyle = m.col; g.fillText(m.name, tx, z); }
-  g.fillStyle = '#e4ebe9'; g.beginPath(); g.arc(X(controls.target.x), Z(controls.target.z), 4, 0, 7); g.fill();
-  // north arrow and scale bar
-  g.fillStyle = 'rgba(14,20,22,.8)'; g.beginPath(); g.arc(W - 26, 26, 17, 0, 7); g.fill();
-  g.fillStyle = '#e8c547'; g.font = '700 18px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.fillText('N', W - 26, 27); g.textAlign = 'left';
-  const bar = R >= 5000 ? 2000 : R >= 2000 ? 1000 : 500, bw = bar/(2*R)*W;
-  g.fillStyle = 'rgba(14,20,22,.8)'; g.fillRect(10, W - 34, bw + 16, 24); g.fillStyle = '#e4ebe9'; g.fillRect(18, W - 20, bw, 4);
-  g.font = '500 15px "IBM Plex Mono", monospace'; g.fillText(bar >= 1000 ? bar/1000 + ' กม.' : bar + ' ม.', 20, W - 27);
-}
-MM.c.addEventListener('click', e => {
-  const b = MM.c.getBoundingClientRect(), x = MM.cx - MM.r + (e.clientX - b.left)/b.width*2*MM.r, z = MM.cz - MM.r + (e.clientY - b.top)/b.height*2*MM.r;
-  const t = new THREE.Vector3(x, Math.max(0, terrainH(x, z)), z), off = camera.position.clone().sub(controls.target);
-  if(off.length() < 250) off.setLength(250);
-  fly = {p0:camera.position.clone(), t0:controls.target.clone(), p:t.clone().add(off), t, s:performance.now()};
-});
-MM.c.addEventListener('mousemove', e => { const b = MM.c.getBoundingClientRect(), x = MM.cx - MM.r + (e.clientX - b.left)/b.width*2*MM.r, z = MM.cz - MM.r + (e.clientY - b.top)/b.height*2*MM.r;
-  const d = Math.hypot(x + 20, z - 120); $('#mmCoord').textContent = (d >= 1000 ? (d/1000).toFixed(1) + ' กม.' : Math.round(d) + ' ม.') + ' จากสถานี'; });
-MM.c.addEventListener('mouseleave', () => $('#mmCoord').textContent = '');
-document.querySelectorAll('#mmZoom button').forEach(b => b.addEventListener('click', () => { MM.r = +b.dataset.r; document.querySelectorAll('#mmZoom button').forEach(x => x.setAttribute('aria-pressed', x === b)); drawMinimap(); }));
-function setMap(on){ $('#minimap').hidden = !on; $('#tMap').setAttribute('aria-pressed', on); try { localStorage.setItem('mapOn', on ? '1' : '0'); } catch(e){} }
-$('#tMap').addEventListener('click', () => setMap($('#minimap').hidden));
-try { const v = localStorage.getItem('mapOn'); setMap(v ? v === '1' : innerWidth > 860); } catch(e){ setMap(innerWidth > 860); }
+
 { const bar = $('#bar'), setH = () => document.documentElement.style.setProperty('--barH', bar.offsetHeight + 'px'); setH(); if(window.ResizeObserver) new ResizeObserver(setH).observe(bar); addEventListener('resize', setH); }
 function setPanel(min){ const p = $('#panel'); p.classList.toggle('min', min); $('#panelToggle').textContent = min ? 'ขยาย' : 'ย่อ'; $('#panelToggle').setAttribute('aria-expanded', !min); try { localStorage.setItem('panelMin', min ? '1' : '0'); } catch(e){} }
 $('#panelToggle').addEventListener('click', () => setPanel(!$('#panel').classList.contains('min')));
@@ -1648,7 +1586,7 @@ function frame(now){
   const cm = Math.floor(simT/60); if(cm !== lastClockMin){ lastClockMin = cm; drawClock(simT); }
   uiT += dt; heatT += dt;
   if(heatT > 0.4){ heatT = 0; updateHeat(); }
-  if(uiT > 0.25){ uiT = 0; updateUI(); updateSignals(); if(!$('#minimap').hidden) drawMinimap(); }
+  if(uiT > 0.25){ uiT = 0; updateUI(); updateSignals(); }
   render();
   requestAnimationFrame(frame);
 }
