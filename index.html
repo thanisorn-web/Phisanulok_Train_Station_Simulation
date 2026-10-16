@@ -831,6 +831,66 @@ landTex.wrapS = landTex.wrapT = THREE.ClampToEdgeWrapping;
   // road bridges over the Nan
   for(const z of [-1250, -1520, -250, 560]) box(200, 1.2, 16, std({color:0xb9b6ae}), riverX(z), 1.4, z);
 }
+// neighbourhood next to the station, laid out after the satellite map: a street grid on both sides of the
+// railway, dense shophouses on the streets, tin-roof houses and trees inside the blocks, a market hall
+// south-east of the station and an open lot at the south-east corner
+{ const road = std({color:0x4b4d50, roughness:0.95}), walk = std({color:0xb7b2a6, roughness:0.9}), yard = std({color:0x9c968a, roughness:0.95});
+  const street = (x0, x1, z0, z1) => { slab(x0, x1, z0, z1, 0, 0.05, road, false); };
+  const W_X = [-600, -530, -410, -290, -175, -112], E_X = [115, 185, 300, 420, 540, 600];
+  const W_Z = [-900, -850, -720, -600, -470, -330, -200, -60, 80, 210, 350, 480, 620, 760, 880, 900];
+  const E_Z = [-900, -820, -690, -570, -440, -300, -170, -30, 110, 240, 380, 510, 650, 790, 900];
+  // streets: north–south between the blocks, east–west across each side
+  for(const x of W_X.slice(1, -1)) street(x - 4, x + 4, -900, 900);
+  for(const z of W_Z.slice(1, -1)) street(-600, -88.5, z - 4.5, z + 4.5);
+  for(const x of E_X.slice(1, -1)) street(x - 4, x + 4, -900, 900);
+  for(const z of E_Z.slice(1, -1)) street(66, 600, z - 4.5, z + 4.5);
+  slab(108, 116, -900, 900, 0, 0.05, road, false);                                 // road along the east side of the yard
+  // buildings and trees, lot by lot
+  const facade = ctex(128, 192, (g, w, h) => { g.fillStyle = '#e8e3da'; g.fillRect(0, 0, w, h);
+    for(let f=0; f<3; f++) for(let i=0; i<4; i++){ g.fillStyle = '#56656c'; g.fillRect(10 + i*30, f*64 + 18, 20, 30); }
+    g.fillStyle = '#6f6a62'; g.fillRect(0, 170, w, 22); });
+  const litT = ctex(128, 192, (g, w, h) => { g.fillStyle = '#000'; g.fillRect(0, 0, w, h);
+    for(let f=0; f<3; f++) for(let i=0; i<4; i++) if(rnd() < 0.5){ g.fillStyle = '#ffd9a0'; g.fillRect(10 + i*30, f*64 + 18, 20, 30); }
+    g.fillStyle = '#ffcf8a'; g.fillRect(4, 172, w - 8, 18); });
+  const fm = std({map:facade, emissive:new THREE.Color(0xffc977), emissiveMap:litT, emissiveIntensity:0}); nightMats.push(fm);
+  const top = std({color:0x9d9a94, roughness:0.85});
+  const boxes = [], bcol = [], roofs = [], rcol = [], trunks = [], crowns = [], ccol = [];
+  const walls = [0xe9dfcc, 0xd8c8ad, 0xcfd3cf, 0xe2c7ad, 0xc4bba9, 0xf0ebe0, 0xd2b893, 0xbcc8c4].map(c => new THREE.Color(c));
+  const tins = [0xa8432f, 0xb85a33, 0x8d3a2c, 0x3f6e8f, 0x7d8387, 0x9a9f9c, 0xc0703a, 0x4f7f74].map(c => new THREE.Color(c));
+  const greens = [0x46703a, 0x557f40, 0x3d6532, 0x62894a].map(c => new THREE.Color(c));
+  const tree = (x, z, s) => { trunks.push([x, 0, z, rnd()*6, s, s*1.1, s]); crowns.push([x, 4.8*s, z, rnd()*6, 2.8*s, 2.2*s, 2.8*s]); ccol.push(pick(greens)); };
+  const house = (x, z, w, d, ry) => { const h = rnd() < 0.6 ? 3.4 : 6.6; boxes.push([x, h/2, z, ry, w, h, d]); bcol.push(pick(walls));
+    roofs.push([x, h, z, ry, w*1.12, 1.6 + rnd()*1.2, d*1.05]); rcol.push(pick(tins)); };
+  const shop = (x, z, w, d, ry) => { const h = 3.4*(3 + Math.floor(rnd()*2)); boxes.push([x, h/2, z, ry, w, h, d]); bcol.push(pick(walls)); };
+  const busy = []; const free = (x, z) => !busy.some(([a, b, c, d]) => x > a && x < b && z > c && z < d);
+  busy.push([-112, -86, -580, 580]);                                               // existing shophouse row and road
+  // market hall and its forecourt south-east of the station; open lot at the south-east corner
+  { const x0 = 189, x1 = 296, z0 = 244, z1 = 376;
+    slab(x0, x1, z0, z1, 0, 0.08, yard, false);
+    box(80, 7, 96, std({color:0xd9d4c8}), 238, 0, 312);
+    mesh(new THREE.CylinderGeometry(0.01, 1, 1, 4, 1).rotateY(Math.PI/4).scale(62, 5, 72), std({color:0x4f8f88, metalness:0.35, roughness:0.45}), 238, 9.5, 312);
+    busy.push([x0, x1, z0, z1]);
+    slab(424, 600, 654, 900, 0, 0.03, std({map:rep(T.dirt, 8, 10)}), false);
+    for(let i=0;i<14;i++) tree(430 + rnd()*165, 660 + rnd()*235, 0.9 + rnd()*0.6);
+    busy.push([424, 600, 654, 900]); }
+  function fillBlock(x0, x1, z0, z1){
+    const inset = 3, lw = 9, ld = 15;
+    for(let x = x0 + inset; x + lw <= x1 - inset; x += lw + 1) for(let z = z0 + inset; z + ld <= z1 - inset; z += ld + 1){
+      const cx = x + lw/2, cz = z + ld/2; if(!free(cx, cz)) continue;
+      const edge = x - x0 < 14 || x1 - (x + lw) < 14 || z - z0 < 18 || z1 - (z + ld) < 18, r = rnd();
+      if(edge && r < 0.45) shop(cx, cz, lw - 0.2, ld - 1, 0);
+      else if(r < 0.72) house(cx + (rnd()-0.5)*1.5, cz + (rnd()-0.5)*2, lw - 1.6 - rnd()*2, ld - 4 - rnd()*3, (rnd()-0.5)*0.06);
+      else if(r < 0.9) tree(cx + (rnd()-0.5)*4, cz + (rnd()-0.5)*6, 0.8 + rnd()*0.6);
+    }
+  }
+  for(let i=0;i<W_X.length-1;i++) for(let k=0;k<W_Z.length-1;k++) fillBlock(W_X[i] + 4, W_X[i+1] - 4, W_Z[k] + 4.5, W_Z[k+1] - 4.5);
+  for(let i=0;i<E_X.length-1;i++) for(let k=0;k<E_Z.length-1;k++) fillBlock(E_X[i] + 4, E_X[i+1] - 4, E_Z[k] + 4.5, E_Z[k+1] - 4.5);
+  inst(new THREE.BoxGeometry(1, 1, 1), [fm, fm, top, top, fm, fm], boxes, true, bcol);
+  const tri = new THREE.Shape([new THREE.Vector2(-0.5, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)]);
+  inst(new THREE.ExtrudeGeometry(tri, {depth:1, bevelEnabled:false}).translate(0, 0, -0.5), std({roughness:0.6, metalness:0.25}), roofs, true, rcol);
+  inst(new THREE.CylinderGeometry(0.2, 0.34, 4, 6).translate(0, 2, 0), std({color:0x6b4e35}), trunks, false);
+  inst(new THREE.IcosahedronGeometry(1, 1), std({flatShading:true, roughness:0.9}), crowns, true, ccol);
+}
 // trees: village clumps across the fields and lines along both river banks
 { const trunks = [], crowns = [], cc = [], greens = [0x46703a, 0x557f40, 0x3d6532, 0x62894a].map(c => new THREE.Color(c));
   const tree = (x, z, s) => { const y = terrainH(x, z); trunks.push([x, y, z, 0, s, s*1.2, s]); crowns.push([x, y + 5.4*s, z, rnd()*6, 3.2*s, 2.6*s, 3.2*s]); cc.push(pick(greens)); };
