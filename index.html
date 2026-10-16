@@ -517,6 +517,30 @@ const c2 = canopy(-7.3, 1.3, -150, 222, -3, [-56, -22]);
   const pl = []; for(let z=-36; z<=280; z+=8) pl.push([-21.5, 4.7, z]); for(let z=-146; z<=218; z+=8) pl.push([-3, 4.7, z]);
   inst(new THREE.BoxGeometry(0.25, 0.08, 1.4), M.lamp, pl, false);
 }
+// night lighting: pools of light on the platforms, glowing fixtures and real point lights that light trains and people
+const NIGHT = {lights:[], mats:[]};
+{ const glowTex = (inner, mid) => ctex(128, 128, (g,w,h) => { const r = g.createRadialGradient(64,64,0,64,64,64); r.addColorStop(0, inner); r.addColorStop(0.35, mid); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0,0,w,h); });
+  const addMat = (map) => { const m = new THREE.MeshBasicMaterial({map, transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}); NIGHT.mats.push(m); return m; };
+  const poolMat = addMat(glowTex('rgba(255,236,196,0.95)', 'rgba(255,214,150,0.35)'));
+  const roadMat = addMat(glowTex('rgba(255,196,120,0.8)', 'rgba(255,170,90,0.28)'));
+  const haloMat = new THREE.SpriteMaterial({map:glowTex('rgba(255,250,235,1)', 'rgba(255,225,170,0.45)'), transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}); NIGHT.mats.push(haloMat);
+  const pools = [], halos = [];
+  for(let z=-36; z<=280; z+=8) pools.push([-21.5, PY + 0.05, z, 0, 8.5, 1, 8.5]);
+  for(let z=-146; z<=218; z+=8) pools.push([-3, PY + 0.05, z, 0, 8, 1, 8]);
+  inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI/2), poolMat, pools, false).renderOrder = 3;
+  // fluorescent tubes under the canopies get a soft halo
+  for(const p of pools){ const sp = new THREE.Sprite(haloMat); sp.position.set(p[0], 4.62, p[2]); sp.scale.set(2.2, 1.2, 1); sp.renderOrder = 4; scene.add(sp); halos.push(sp); }
+  // sodium-coloured pools under the street and yard lamps
+  const rp = []; for(let z=-860; z<=860; z+=32) rp.push([-82, 0.08, z, 0, 14, 1, 14]); for(let z=-300; z<=280; z+=40) rp.push([38, 0.2, z, 0, 16, 1, 16]);
+  inst(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI/2), roadMat, rp, false).renderOrder = 3;
+  for(let z=-860; z<=860; z+=32){ const sp = new THREE.Sprite(haloMat); sp.position.set(-85.8, 7.85, z); sp.scale.set(3, 3, 1); scene.add(sp); }
+  // a few real lights along each platform so trains, benches and people pick up the light
+  for(const [x, z0, z1] of [[-21.5, -20, 280], [-3, -140, 215]]) for(let z = z0; z <= z1; z += 52){
+    const l = new THREE.PointLight(0xffe2b0, 0, 34, 2); l.position.set(x, 4.3, z); scene.add(l); NIGHT.lights.push(l); }
+  // concourse lights inside the station hall shine out through the arched windows
+  for(const [x, z] of [[-42, 10], [-42, 50], [-47, 200], [-47, 240]]){ const l = new THREE.PointLight(0xffcf8a, 0, 30, 2); l.position.set(x, 5, z); scene.add(l); NIGHT.lights.push(l); }
+}
+
 // station name boards hung from the canopies
 function signTex(main, sub, bg = '#1d4f8f'){ return ctex(512, 128, (g,w,h) => { g.fillStyle = bg; g.fillRect(0,0,w,h); g.strokeStyle = '#f1eee6'; g.lineWidth = 6; g.strokeRect(6,6,w-12,h-12);
   g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '600 56px Anuphan, "IBM Plex Sans Thai", sans-serif'; g.fillText(main, w/2, 66); g.font = '500 30px "IBM Plex Sans Thai", sans-serif'; g.fillText(sub, w/2, 106); }); }
@@ -786,6 +810,9 @@ function updateLighting(t){
   const night = 1 - day; renderer.toneMappingExposure = 1.0 + night*0.35;
   for(const m of nightMats) m.emissiveIntensity = m === M.lamp ? night*2.5 : night*0.9;
   headMat.emissiveIntensity = 1.2 + night*2.5;
+  const lampOn = THREE.MathUtils.smoothstep(night, 0.25, 0.75);
+  for(const m of NIGHT.mats) m.opacity = lampOn*0.85;
+  for(const l of NIGHT.lights) l.intensity = lampOn*2.2;
 }
 function updateSignals(){
   for(const p of [1,2,3]) for(const end of ['N','S']){
