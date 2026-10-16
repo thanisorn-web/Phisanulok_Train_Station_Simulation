@@ -102,6 +102,13 @@ details{color:var(--muted);font-size:12px;line-height:1.6}
 details summary{cursor:pointer;color:var(--fg)}
 details p{margin:6px 0 0;max-width:62ch}
 .loading[hidden]{display:none}
+.timebox{display:flex;align-items:center;gap:8px}
+.range.time input{width:150px}
+.sel select{max-width:170px;background:var(--panel-solid);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font:500 12px var(--f-body);cursor:pointer;accent-color:var(--accent)}
+.sel select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sel{display:flex;align-items:center;gap:6px}
+.toast{position:fixed;left:50%;top:calc(80px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--panel-solid);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font:500 12.5px var(--f-body);color:var(--accent);z-index:8}
+.toast[hidden]{display:none}
 .loading{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);color:var(--muted);font:500 14px var(--f-body);z-index:9}
 
 @media (max-width:860px){
@@ -120,6 +127,7 @@ details p{margin:6px 0 0;max-width:62ch}
 </style>
 
 <canvas id="c" tabindex="0" aria-label="ภาพ 3 มิติของสถานีรถไฟพิษณุโลก"></canvas>
+<div class="toast" id="busy" role="status" hidden>กำลังคำนวณเวลา…</div>
 <div class="loading" id="loading">กำลังสร้างแบบจำลองสถานี…</div>
 
 <div class="hud">
@@ -148,6 +156,27 @@ details p{margin:6px 0 0;max-width:62ch}
       <button data-s="30" aria-pressed="false">30×</button>
       <button data-s="60" aria-pressed="false">60×</button>
       <button data-s="100" aria-pressed="false">100×</button>
+    </div>
+    <div class="timebox">
+      <div class="seg" role="group" aria-label="ย้อนและเดินหน้าเวลา" id="jump">
+        <button data-j="-3600" title="ย้อนเวลา 1 ชั่วโมง">⏮ 1 ชม.</button>
+        <button data-j="-900" title="ย้อนเวลา 15 นาที">◀ 15 น.</button>
+        <button data-j="900" title="เดินหน้า 15 นาที">15 น. ▶</button>
+        <button data-j="3600" title="เดินหน้า 1 ชั่วโมง">1 ชม. ⏭</button>
+      </div>
+      <label class="range time"><span class="lbl">เวลา</span><input id="timeSl" type="range" min="10800" max="97140" step="60" value="26460" aria-label="เลื่อนไปยังเวลา"><output id="timeOut">07:21</output></label>
+      <label class="sel"><span class="lbl">ช่วงเวลา</span><select id="period">
+        <option value="">เลือก…</option>
+        <option value="05:30">เช้ามืด 05:30 · ท้องถิ่น 403, ธรรมดา 202</option>
+        <option value="07:00">เช้า 07:00 · ท้องถิ่น 407</option>
+        <option value="10:10">สาย 10:10 · ท้องถิ่น 401, เร็ว 112</option>
+        <option value="11:25">เที่ยง 11:25 · ด่วนพิเศษ 7</option>
+        <option value="12:55">บ่าย 12:55 · ด่วนพิเศษ 8, ด่วน 102, เร็ว 111</option>
+        <option value="16:50">เย็น 16:50 · ท้องถิ่น 408, ธรรมดา 201</option>
+        <option value="20:10">ค่ำ 20:10 · เร็ว 109</option>
+        <option value="22:35">ดึก 22:35 · ด่วน 52, ด่วนพิเศษ 14</option>
+        <option value="24:35">หลังเที่ยงคืน 00:35 · ด่วนพิเศษ 10, 9, 13</option>
+      </select></label>
     </div>
     <label class="range"><span class="lbl">ปริมาณผู้โดยสาร</span><input id="demand" type="range" min="50" max="300" step="10" value="100"><output id="demandOut">100%</output></label>
     <label class="range"><span class="lbl">บันไดกว้าง</span><input id="stairW" type="range" min="2" max="6" step="0.5" value="3"><output id="stairOut">3.0 ม.</output></label>
@@ -1187,6 +1216,11 @@ function flyTo(k, instant){
 }
 document.querySelectorAll('[data-cam]').forEach(b => b.addEventListener('click', () => flyTo(b.dataset.cam)));
 $('#reset').addEventListener('click', () => startDay(DAY0));
+document.querySelectorAll('#jump button').forEach(b => b.addEventListener('click', () => timeJump(simT + +b.dataset.j)));
+let scrubbing = false;
+$('#timeSl').addEventListener('input', e => { scrubbing = true; $('#timeOut').textContent = fmt(+e.target.value); });
+$('#timeSl').addEventListener('change', e => { scrubbing = false; timeJump(+e.target.value); });
+$('#period').addEventListener('change', e => { if(e.target.value){ timeJump(hm(e.target.value)); e.target.value = ''; } });
 
 const STAT = {sched:['รอ',''], app:['กำลังเข้า','app'], dwell:['จอดรับส่ง','dw'], dep:['กำลังออก','dep'], gone:['ออกแล้ว','gone']};
 const schedEl = $('#sched');
@@ -1215,6 +1249,7 @@ function sparkDraw(){
 }
 function updateUI(){
   $('#clock').textContent = fmt(simT);
+  if(!scrubbing){ $('#timeSl').value = Math.round(simT); $('#timeOut').textContent = fmt(simT); }
   $('#miniStat').textContent = `${agents.length} คน · ขึ้น ${S.boarded} · ตก ${S.missed}`;
   $('#kIn').textContent = agents.length; $('#kBoard').textContent = S.boarded; $('#kAlight').textContent = S.alighted;
   $('#kMiss').textContent = S.missed; $('#kWait').textContent = S.waitN ? (S.waitSum/S.waitN/60).toFixed(1) : '–';
@@ -1261,10 +1296,39 @@ addEventListener('resize', resize);
 function startDay(t0, warmTo){
   agents = []; resetTrains(); Object.assign(S, {boarded:0, alighted:0, missed:0, waitSum:0, waitN:0}); spark = []; lastSample = 0;
   for(const k in STAIRS) STAIRS[k].next = 0;
-  simT = t0;
-  if(warmTo){ while(simT < warmTo){ step(0.5, false); if(simT - lastSample >= 60){ lastSample = simT; spark.push(agents.length); if(spark.length > 240) spark.shift(); } } }
+  simT = t0; snaps = []; snapshot();
+  if(warmTo) advance(warmTo);
   stepTrains(0, true); updateHeat(); updateUI(); sparkDraw();
 }
+
+// ---------------------------------------------------------------- time travel
+// the whole simulation state is saved every 5 simulated minutes, so rewinding restores the
+// nearest earlier save and replays forward to the exact minute
+const SNAP_EVERY = 300, TF = ['status','spawnInit','spawn','si','alightLeft','alAcc','boarded','alighted','boardTotal','alightTotal'];
+let snaps = [];
+function snapshot(){
+  snaps.push({t:simT, agents:agents.map(a => ({...a})), trains:TRAINS.map(d => { const o = {}; for(const k of TF) o[k] = d[k]; return o; }),
+    S:{...S}, stairs:Object.keys(STAIRS).map(k => STAIRS[k].next), spark:spark.slice(), lastSample});
+}
+function restore(s){
+  simT = s.t; agents = s.agents.map(a => ({...a}));
+  TRAINS.forEach((d, i) => Object.assign(d, s.trains[i]));
+  Object.assign(S, s.S); Object.keys(STAIRS).forEach((k, i) => STAIRS[k].next = s.stairs[i]);
+  spark = s.spark.slice(); lastSample = s.lastSample;
+}
+function sample(draw){
+  if(simT - lastSample >= 60){ lastSample = simT; spark.push(agents.length); if(spark.length > 240) spark.shift(); if(draw) sparkDraw(); }
+  if(simT - snaps[snaps.length-1].t >= SNAP_EVERY) snapshot();
+}
+function advance(to){ while(simT < to - 1e-6){ step(Math.min(0.5, to - simT), false); sample(false); } }
+function jumpTo(t){
+  t = Math.max(DAY0, Math.min(DAY1 - 60, Math.round(t)));
+  if(t < simT){ while(snaps.length > 1 && snaps[snaps.length-1].t > t) snaps.pop(); restore(snaps[snaps.length-1]); }
+  advance(t);
+  stepTrains(0, true); updateHeat(); updateUI(); sparkDraw(); lastClockMin = -1;
+}
+// a long jump replays hours of crowd movement, so show a note and let it paint first
+function timeJump(t){ $('#busy').hidden = false; setTimeout(() => { jumpTo(t); $('#busy').hidden = true; }, 30); }
 
 let last = performance.now(), uiT = 0, heatT = 0, lastClockMin = -1;
 function frame(now){
@@ -1272,7 +1336,7 @@ function frame(now){
   if(speed > 0){
     const sim = dt * speed, n = Math.min(16, Math.max(1, Math.ceil(sim/0.25))), h = sim/n;
     for(let i=0;i<n;i++) step(h, i === n-1);
-    if(simT - lastSample >= 60){ lastSample = simT; spark.push(agents.length); if(spark.length > 240) spark.shift(); sparkDraw(); }
+    sample(true);
     if(simT > DAY1) startDay(DAY0);
   }
   if(fly){ const k = Math.min(1, (now - fly.s)/1100), e = k < .5 ? 2*k*k : 1 - Math.pow(-2*k+2, 2)/2;
