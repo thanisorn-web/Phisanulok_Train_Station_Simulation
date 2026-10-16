@@ -53,7 +53,12 @@ body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:13
 .legend .bar{display:inline-flex;height:8px;width:90px;border-radius:2px;background:linear-gradient(90deg,var(--ok),var(--warn),var(--hot),var(--bad));margin:0 6px;vertical-align:0}
 
 .panel{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(var(--barH,64px) + 24px + env(safe-area-inset-bottom,0px));width:340px;display:flex;flex-direction:column;overflow:hidden}
-.panel-head{display:none}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);font-family:var(--f-display);font-weight:600}
+.panel.min{bottom:auto}
+.panel.min .scroll{display:none}
+.panel.min .panel-head{border-bottom:0}
+.panel-head .mini{font:500 12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums;margin-left:auto}
+.panel:not(.min) .panel-head .mini{display:none}
 .ctl-toggle{display:none}
 .scroll{overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:16px;min-height:0}
 .sec h2{font-family:var(--f-display);font-weight:600;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
@@ -100,8 +105,6 @@ details p{margin:6px 0 0;max-width:62ch}
   .brand small{display:none}
   .panel{top:auto;left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));width:auto;height:38%;bottom:calc(var(--barH,56px) + 16px + env(safe-area-inset-bottom,0px))}
   .panel.min{height:auto}
-  .panel.min .scroll{display:none}
-  .panel-head{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--line);font-family:var(--f-display);font-weight:600}
   .controls{gap:8px 10px;padding:8px 10px}
   .range input{width:76px}
 }
@@ -136,6 +139,7 @@ details p{margin:6px 0 0;max-width:62ch}
       <button data-s="10" aria-pressed="true">10×</button>
       <button data-s="30" aria-pressed="false">30×</button>
       <button data-s="60" aria-pressed="false">60×</button>
+      <button data-s="100" aria-pressed="false">100×</button>
     </div>
     <label class="range"><span class="lbl">ปริมาณผู้โดยสาร</span><input id="demand" type="range" min="50" max="300" step="10" value="100"><output id="demandOut">100%</output></label>
     <label class="range"><span class="lbl">บันไดกว้าง</span><input id="stairW" type="range" min="2" max="6" step="0.5" value="3"><output id="stairOut">3.0 ม.</output></label>
@@ -158,8 +162,8 @@ details p{margin:6px 0 0;max-width:62ch}
   </div>
 
 <aside class="card panel" id="panel">
-  <div class="panel-head"><span>ศูนย์ควบคุม</span><button class="btn" id="panelToggle">ย่อ</button></div>
-  <div class="scroll">
+  <div class="panel-head"><span>ภาพรวมสถานะ</span><span class="mini" id="miniStat"></span><button class="btn" id="panelToggle" aria-expanded="true" aria-controls="panelBody">ย่อ</button></div>
+  <div class="scroll" id="panelBody">
     <section class="sec">
       <h2>ภาพรวมขณะนี้</h2>
       <div class="kpis">
@@ -1120,7 +1124,9 @@ toggle('#tLabels', on => labels.forEach(l => l.visible = on));
 toggle('#tState', on => stateColors = on);
 toggle('#tLight', on => fixedNoon = !on);
 { const bar = $('#bar'), setH = () => document.documentElement.style.setProperty('--barH', bar.offsetHeight + 'px'); setH(); if(window.ResizeObserver) new ResizeObserver(setH).observe(bar); addEventListener('resize', setH); }
-$('#panelToggle').addEventListener('click', () => { const p = $('#panel'); p.classList.toggle('min'); $('#panelToggle').textContent = p.classList.contains('min') ? 'ขยาย' : 'ย่อ'; });
+function setPanel(min){ const p = $('#panel'); p.classList.toggle('min', min); $('#panelToggle').textContent = min ? 'ขยาย' : 'ย่อ'; $('#panelToggle').setAttribute('aria-expanded', !min); try { localStorage.setItem('panelMin', min ? '1' : '0'); } catch(e){} }
+$('#panelToggle').addEventListener('click', () => setPanel(!$('#panel').classList.contains('min')));
+try { if(localStorage.getItem('panelMin') === '1') setPanel(true); } catch(e){}
 
 const CAMS = {
   overview:{p:[175, 210, 340], t:[0, 0, 40]},
@@ -1164,6 +1170,7 @@ function sparkDraw(){
 }
 function updateUI(){
   $('#clock').textContent = fmt(simT);
+  $('#miniStat').textContent = `${agents.length} คน · ขึ้น ${S.boarded} · ตก ${S.missed}`;
   $('#kIn').textContent = agents.length; $('#kBoard').textContent = S.boarded; $('#kAlight').textContent = S.alighted;
   $('#kMiss').textContent = S.missed; $('#kWait').textContent = S.waitN ? (S.waitSum/S.waitN/60).toFixed(1) : '–';
   $('#kQueue').textContent = agents.reduce((n,a) => n + (a.hold ? 1 : 0), 0);
@@ -1218,7 +1225,7 @@ let last = performance.now(), uiT = 0, heatT = 0, lastClockMin = -1;
 function frame(now){
   const dt = Math.min(0.1, (now - last)/1000); last = now;
   if(speed > 0){
-    const sim = dt * speed, n = Math.max(1, Math.ceil(sim/0.25)), h = sim/n;
+    const sim = dt * speed, n = Math.min(16, Math.max(1, Math.ceil(sim/0.25))), h = sim/n;
     for(let i=0;i<n;i++) step(h, i === n-1);
     if(simT - lastSample >= 60){ lastSample = simT; spark.push(agents.length); if(spark.length > 240) spark.shift(); sparkDraw(); }
     if(simT > hm('23:20')) startDay(hm('05:30'));
