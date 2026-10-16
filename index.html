@@ -75,6 +75,14 @@ td.n{font-family:var(--f-mono);text-align:right}
 .los{display:inline-block;min-width:22px;text-align:center;border-radius:4px;font:600 12px var(--f-mono);padding:1px 4px;color:#11181a}
 .los.A,.los.B{background:var(--ok)}.los.C{background:var(--warn)}.los.D{background:var(--hot)}.los.E,.los.F{background:var(--bad)}
 .sched{display:flex;flex-direction:column}
+.dir-head{display:flex;align-items:baseline;gap:8px;padding:10px 10px 8px;margin-top:6px;border-radius:7px 7px 0 0;background:rgba(255,255,255,.04);border-bottom:2px solid var(--accent)}
+.dir-head:first-child{margin-top:0}
+.dir-head.down{border-bottom-color:var(--blue)}
+.dir-head .arrow{font:600 16px var(--f-mono);color:var(--accent)}
+.dir-head.down .arrow{color:var(--blue)}
+.dir-head b{font-family:var(--f-display);font-size:14px}
+.dir-head span{color:var(--muted);font-size:12px}
+.dir-head em{margin-left:auto;font-style:normal;color:var(--muted);font-size:11px}
 .row{display:grid;grid-template-columns:52px 1fr auto;gap:2px 10px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer}
 .row:hover{background:rgba(255,255,255,.02)}
 .row .t{font-family:var(--f-mono);font-size:13px;font-variant-numeric:tabular-nums}
@@ -1155,10 +1163,12 @@ $('#reset').addEventListener('click', () => startDay(DAY0));
 
 const STAT = {sched:['รอ',''], app:['กำลังเข้า','app'], dwell:['จอดรับส่ง','dw'], dep:['กำลังออก','dep'], gone:['ออกแล้ว','gone']};
 const schedEl = $('#sched');
-schedEl.innerHTML = TRAINS.map(d => `<div class="row" data-i="${d.i}" role="button" tabindex="0">
+const rowHTML = d => `<div class="row" data-i="${d.i}" role="button" tabindex="0">
   <div class="t">${d.origin ? fmt(d.dep) : fmt(d.arr)}<small>${d.origin ? 'ต้นทาง' : d.term ? 'ปลายทาง' : 'ออก ' + fmt(d.dep)}</small></div>
   <div class="nm"><b>${KIND[d.kind]} ${d.no}</b><div>${d.route} · ชานชาลา ${d.plat}</div></div>
-  <div class="st"><span class="pill" id="st${d.i}">รอ</span><span class="prog" id="pg${d.i}"></span></div></div>`).join('');
+  <div class="st"><span class="pill" id="st${d.i}">รอ</span><span class="prog" id="pg${d.i}"></span></div></div>`;
+const dirGroup = (north, arrow, title, sub) => `<div class="dir-head ${north ? 'up' : 'down'}"><span class="arrow" aria-hidden="true">${arrow}</span><b>${title}</b><span>${sub}</span><em>${TRAINS.filter(d => (d.from === 'S') === north).length} ขบวน</em></div>` + TRAINS.filter(d => (d.from === 'S') === north).map(rowHTML).join('');
+schedEl.innerHTML = dirGroup(true, '↑', 'เที่ยวขึ้น', 'ไปเชียงใหม่') + dirGroup(false, '↓', 'เที่ยวล่อง', 'ไปกรุงเทพฯ');
 schedEl.addEventListener('click', e => { const r = e.target.closest('.row'); if(!r) return; const d = TRAINS[+r.dataset.i];
   fly = {p0:camera.position.clone(), t0:controls.target.clone(), p:new THREE.Vector3(PLAT[d.plat].track + 34, 16, STOPZ + 95), t:new THREE.Vector3(PLAT[d.plat].track, 1, STOPZ), s:performance.now()}; });
 const zonesEl = $('#zones');
