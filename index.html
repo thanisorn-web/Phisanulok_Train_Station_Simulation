@@ -1318,8 +1318,13 @@ $('#histCsv').addEventListener('click', () => {
   const days = [{no:dayNo, ...summarize(dayLog)}, ...histDays];
   for(const d of days) for(const p of d.periods) if(p.has) rows.push([d.no, p.name, fmt(p.from), fmt(p.to), p.peak, p.at != null ? fmt(p.at) : '', p.dens, losOf(p.dens), p.zone >= 0 ? ZONES[p.zone].name : '', p.boarded, p.alighted, p.missed]);
   const csv = '\ufeff' + rows.map(r => r.map(x => /[",\n]/.test(String(x)) ? '"' + String(x).replace(/"/g, '""') + '"' : x).join(',')).join('\n');
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'phitsanulok-peaks.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  const blob = new Blob([csv], {type:'text/csv'});
+  if(dl){ dl.save({filename:'phitsanulok-peaks.csv', data:blob}).catch(() => {}); return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'phitsanulok-peaks.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
+// inside claude.ai the file goes through the viewer's save prompt; on a plain web host a normal download link is used
+let dl = null;
+if(window.claude && window.claude.use) window.claude.use('downloads').then(x => { dl = x; }).catch(() => {});
 let histT = 0;
 function updateUI(){
   if(histSel.value === 'live' && performance.now() - histT > 1500){ histT = performance.now(); renderHistory(); }
